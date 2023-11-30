@@ -47,15 +47,19 @@ class Cell:
 			return self.value != other.value
 		else:
 			return self.value != other
-
+		
+	def __add__(self, other):
+		if type(other) == Cell or type(other) == EmptyCell:
+			self.value += other.value
+		else:
+			self.value += other
+		return self
+		
+			
 	def __int__(self):
 		return self.value
 
-	def merge(self, other):
-		if self.value == other.value:
-			self.value *= 2
-			other.value = 0
-		return self, other
+	
 
 class EmptyCell(Cell):
 	def __init__(self):

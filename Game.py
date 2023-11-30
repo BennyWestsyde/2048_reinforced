@@ -1,200 +1,208 @@
 import math
+import time
 
-import Cell
+from Cell import Cell, EmptyCell
 import random
 from pynput import keyboard
 
 
 class Game:
-  def __init__(self):
-    self.reset()
+    def __init__(self):
+        self.reset()
 
-  def reset(self):
-    self.board = [[Cell.EmptyCell() for _ in range(4)] for _ in range(4)]
-    self.keys = {
-      "max_value": 0,
-      "total_value": 0,
-      "total_empty_cells": 0,
-      "total_occupied_cells": 0,
-      }
-    self.newCell()
-    self.newCell()
+    def reset(self):
+        self.board = [[EmptyCell() for _ in range(4)] for _ in range(4)]
+        self.score = 0
+        self.max_value = 0
+        self.total_value = 0
+        self.total_empty_cells = 14
+        self.newCell()
+        self.newCell()
 
-  def getHighestTile(self):
-    return self.keys["max_value"]
+    def getMaxValue(self):
+        return self.max_value
 
-  def getScore(self):
-    return self.keys["total_value"]
+    def getScore(self):
+        return self.score
 
-  def getEmptyTiles(self):
-    return self.keys["total_empty_cells"]
+    def getEmptyTiles(self):
+        return self.total_empty_cells
 
-  def updateKeys(self):
-    self.keys["max_value"] = max([max([cell.value for cell in row]) for row in self.board])
-    self.keys["total_value"] = sum([sum([cell.value for cell in row]) for row in self.board])
-    self.keys["total_empty_cells"] = sum([sum([1 for cell in row if cell.value == 0]) for row in self.board])
-    self.keys["total_occupied_cells"] = 16 - self.keys["total_empty_cells"]
+    def updateKeys(self):
+        self.max_value = max([max([cell.value for cell in row]) for row in self.board])
+        self.total_value = sum([sum([cell.value for cell in row]) for row in self.board])
+        self.total_empty_cells = sum([sum([1 for cell in row if cell.value == 0]) for row in self.board])
+        
 
-  def perform_action(self, action):
-    """
-    Perform the given action on the game board and return the new game state
-    """
-    # define your actions in a dictionary for easy calling
-    actions_dict = {'left': self.left, 'right': self.right, 'up': self.up, 'down': self.down}
-
-    # check if the action is valid
-    if action in actions_dict:
-      new_board_state = actions_dict[action]()
-
-      # update the board with the new state
-      self.board = new_board_state
-      self.updateKeys()
-    return self
-
-  def game_over(self):
-    if self.keys["total_empty_cells"] == 0:
-      for row in self.board:
-        for i in range(3):
-          if row[i].value == row[i + 1].value:
+    def game_over(self):
+        if self.total_empty_cells == 0:
+            for row in self.board:
+                for i in range(3):
+                    if row[i].value == row[i + 1].value:
+                        return False
+        elif self.max_value < 2048:
             return False
-    elif self.keys["max_value"] < 2048:
-      return False
-    return True
+        return True
 
-  def checkWin(self):
-    if self.keys["max_value"] == 2048:
-      return True
-    return False
+    def checkWin(self):
+        if self.max_value >= 2048:
+            return True
+        return False
 
-  def getPoints(self):
-    totalvalue = self.keys["total_value"]
-    totaloccupiedcells = self.keys["total_occupied_cells"]
-    valuepoints = math.log(totalvalue, 2)
-    cellpoints = math.log(totaloccupiedcells, 2)
-    return valuepoints + cellpoints
+    def rows(self):
+        return [[Cell(self.board[i][j].value) for j in range(4)] for i in range(4)]
 
-  def rows(self):
-    return [[self.board[i][j] for j in range(4)] for i in range(4)]
+    def cols(self):
+        return [[Cell(self.board[i][j].value) for i in range(4)] for j in range(4)]
 
-  def cols(self):
-    return [[self.board[i][j] for i in range(4)] for j in range(4)]
-
-  def fromRows(self, rows):
-    if len(rows) != 4:
-      raise ValueError('rows must be a list of 4 lists')
-    if rows != self.rows():
-      self.board = rows
-      return True
-    else:
-      return False
-
-  def fromCols(self, cols):
-    if len(cols) != 4:
-      raise ValueError('cols must be a list of 4 lists')
-    if cols != self.cols():
-      self.board = [[cols[i][j] for i in range(4)] for j in range(4)]
-      return True
-    else:
-      return False
-
-  def newCell(self):
-    empty_cells = [(i, j) for i in range(4) for j in range(4)
-                   if self.board[i][j].value == 0]
-    if not empty_cells: raise Exception("No more empty cells!")
-    row, col = random.choice(empty_cells)
-    self.board[row][col] = Cell.Cell(2)
-    self.updateKeys()
-
-  def left(self):
-    rows = self.rows()
-    for row in rows:
-      for i in range(3):
-        if row[i].value == 0:
-          for j in range(i + 1, 4):
-            if row[j].value != 0:
-              row[i], row[j] = row[j], row[i]
-              break
-    for row in rows:
-      for i in range(3):
-        row[i], row[i + 1] = row[i].merge(row[i + 1])
-    if self.fromRows(rows):
-      self.newCell()
-    return self.board
-
-  def right(self):
-    rows = self.rows()
-    for row in rows:
-      for i in range(3, 0, -1):
-        if row[i].value == 0:
-          for j in range(i - 1, -1, -1):
-            if row[j].value != 0:
-              row[i], row[j] = row[j], row[i]
-              break
-    for row in rows:
-      for i in range(3, 0, -1):
-        row[i], row[i - 1] = row[i].merge(row[i - 1])
-    if self.fromRows(rows):
-      self.newCell()
-    return self.board
-
-  def up(self):
-    cols = self.cols()
-    for col in cols:
-      for i in range(4):
-        if col[i].value == 0:
-          for j in range(i + 1, 4):
-            if col[j].value != 0:
-              col[i], col[j] = col[j], col[i]
-              break
-    for col in cols:
-      for i in range(3):
-        col[i], col[i + 1] = col[i].merge(col[i + 1])
-    if self.fromCols(cols):
-      self.newCell()
-    return self.board
-
-  def down(self):
-    cols = self.cols()
-    for col in cols:
-      for i in range(3, -1, -1):
-        if col[i].value == 0:
-          pass
+    def fromRows(self, rows):
+        if len(rows) != 4:
+            raise ValueError('rows must be a list of 4 lists')
+        if rows != self.rows():
+            self.board = rows
+            return True
         else:
-          for j in range(i + 1, 4):
-            if col[j].value == 0:
-              col[i], col[j] = col[j], col[i]
-              break
-    for col in cols:
-      for i in range(3, 0, -1):
-        col[i], col[i - 1] = col[i].merge(col[i - 1])
-    if self.fromCols(cols):
-      self.newCell()
-    return self.board
+            return False
 
-  def __str__(self):
-    return '\n'.join([' '.join([str(cell.value).center(6) for cell in row]) for row in self.board])
-
-
-  def mainloop(self):
-    print(self)
-    while True:
-      with keyboard.Events() as events:
-        event = events.get(1e6)
-        if event.key == keyboard.Key.left:
-          self.left()
-        elif event.key == keyboard.Key.right:
-          self.right()
-        elif event.key == keyboard.Key.up:
-          self.up()
-        elif event.key == keyboard.Key.down:
-          self.down()
+    def fromCols(self, cols):
+        if len(cols) != 4:
+            raise ValueError('cols must be a list of 4 lists')
+        if cols != self.cols():
+            self.board = [[cols[i][j] for i in range(4)] for j in range(4)]
+            return True
         else:
-          continue
-        print()
+            return False
+
+    def newCell(self):
+        empty_cells = [(i, j) for i in range(4) for j in range(4)
+                    if self.board[i][j].value == 0]
+        if not empty_cells: raise Exception("No more empty cells!")
+        row, col = random.choice(empty_cells)
+        self.board[row][col] = Cell(2)
+        self.updateKeys()
+
+    def shift(self, array: list[type(Cell)], reverse=False):
+        if len(array) != 4:
+            raise ValueError('array must be a list of 4 cells')
+        if all([cell.value == 0 for cell in array]):
+            return array
+        if reverse:
+            array = array[::-1].copy()
+        for i in range(3):
+            if array[i] != 0:
+                for j in range(i + 1, 4):
+                    if array[j] == 0:
+                        array[i], array[j] = array[j], array[i]
+                        j+=1
+                        i+=1
+        for i in range(3, 0, -1):
+            if array[i] != 0:
+                for j in range(i - 1, -1, -1):
+                    if array[i] == array[j]:
+                        array[j], array[i] = self.merge(array[i], array[j])
+                    break
+        if reverse:
+
+            for i in range(3, 0, -1):
+                if array[i] != 0:
+                    continue
+                else:
+                    for j in range(i - 1, -1, -1):
+                        if array[j] != 0:
+                            array[i], array[j] = array[j], array[i]
+                            break
+        else:
+            for i in range(3):
+                if array[i] == 0:
+                    continue
+                else:
+                    for j in range(i + 1, 4):
+                        if array[j] == 0:
+                            array[i], array[j] = array[j], array[i]
+                            break
+                        
+        if reverse:
+            array = array[::-1].copy()
+        return array
+
+    def merge(self, source:Cell, destination:Cell):
+        if source.value != destination.value:
+            return source, destination
+        # The cells are the same value and can be merged
+        destination += source
+        source = EmptyCell()
+        self.score += destination.value
+        self.total_empty_cells += 1
+        return source, destination
+
+    def left(self):
+        rows = self.rows()
+        for i, row in enumerate(rows):
+            if all([cell.value == 0 for cell in row]):
+                continue
+            rows[i] = self.shift(row, reverse=True)
+        if self.fromRows(rows):
+            self.newCell()
+
+    def right(self):
+        rows = self.rows()
+        for i, row in enumerate(rows):
+            if all([cell.value == 0 for cell in row]):
+                continue
+            rows[i] = self.shift(row, reverse=False)
+        if self.fromRows(rows):
+            self.newCell()
+
+    def up(self):
+        cols = self.cols()
+        for i, col in enumerate(cols):
+            if all([cell.value == 0 for cell in col]):
+                continue
+            cols[i] = self.shift(col, reverse=True)
+        if self.fromCols(cols):
+            self.newCell()
+
+
+    def down(self):
+        cols = self.cols()
+        for i, col in enumerate(cols):
+            if all([cell.value == 0 for cell in col]):
+                continue
+            cols[i] = self.shift(col, reverse=False)
+        if self.fromCols(cols):
+            self.newCell()
+
+
+    def __str__(self):
+        return '\n'.join([' '.join([str(cell.value).center(6) for cell in row]) for row in self.board])
+
+
+    def mainloop(self):
         print(self)
-        if self.game_over():
-          print("Game Over!")
-          break
+        while True:
+            with keyboard.Events() as events:
+                event = events.get(1e6)
+                if event is None:
+                    continue
+                if event.key == keyboard.Key.left:
+                    self.left()
+                elif event.key == keyboard.Key.right:
+                    self.right()
+                elif event.key == keyboard.Key.up:
+                    self.up()
+                elif event.key == keyboard.Key.down:
+                    self.down()
+                else:
+                    continue
+                print()
+                print(self)
+                if self.game_over():
+                    if self.checkWin():
+                        print("You Win!")
+                    else:
+                        print("Game Over!")
+                    break
+                time.sleep(0.1)
 
 
 if __name__ == '__main__':

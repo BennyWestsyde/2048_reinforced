@@ -110,11 +110,21 @@ for it in tqdm(range(numIterations)):
 
     # Play the game until it's over
     while not game.game_over():  # Assuming game_over() is a method in the Game class that returns True when the game is over
+        null_state = [[0 for i in range(4)] for j in range(4)]
         current_state = game.board.copy()
+        if game.board == [[0 for i in range(4)] for j in range(4)]:  # If the game is over, break out of the loop
+            break
         action = perform_epsilon_greedy_action(game, current_state, epsilon)
         action()  # Perform the action
-        states.append(game.board.copy())  # Save the next state
-
+        if game.board.copy() == null_state:
+            print("Null state reached")
+        else:
+            states.append(current_state)
+    new_states = []
+    for state in states:
+       if state != [[0 for i in range(4)] for j in range(4)]:
+          new_states.append(state)
+    states = new_states.copy()
     # Rest of the original loop follows...
     # Here you update valueMap with collected states after each game
     copyValueMap = {tuple(k): v for k, v in valueMap.items()}  # convert list keys to tuple
@@ -122,6 +132,9 @@ for it in tqdm(range(numIterations)):
     deltaState = []
     weightedRewards = 0
     for state in states:
+        if state == str(((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 2, 0), (0, 0, 0, 0))):
+          print("Null state reached")
+          continue
         weightedRewards = 0
         for action in actions:
             nextState, reward = getNextStateReward(state, action)
@@ -132,6 +145,9 @@ for it in tqdm(range(numIterations)):
             weightedRewards += new_reward
         # convert list to a tuple before using as dictionary key
         state_tuple = tuple([tuple(i) for i in state])   # convert nested list to tuple of tuples
+        if state_tuple == (((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 2, 0), (0, 0, 0, 0)),):
+          print("Null state reached")
+          continue
         deltaState.append(np.abs(copyValueMap.get(state_tuple, 0) - weightedRewards))
         copyValueMap[state_tuple] = weightedRewards
     if deltaState:
@@ -144,7 +160,7 @@ for it in tqdm(range(numIterations)):
                           reverse=True)[:5]
       for state in top_states:
         policy = policyMap.get(state)
-        print(f"State: {state}, Value: {valueMap[state]}, Best Action: {policy if policy else 'No Policy'}")
+        print(f"State: {state}, Value: {valueMap.get(state) if valueMap.get(state) is not None else 'None'}, Best Action: {policy if policy else 'No Policy'}")
 
     if it in [0, 1, 2, 9, 99, numIterations - 1]:
       print("Iteration {}".format(it + 1))
@@ -153,13 +169,9 @@ for it in tqdm(range(numIterations)):
       print("Rewards: {}".format(weightedRewards))
       print("")
       print("")
-
-plt.figure(figsize=(20, 10))
-plt.plot(deltas)
-plt.show()
-
-
 for state in states:
+  if state == [[0 for i in range(4)] for j in range(4)]:  # If the game is over, break out of the loop
+    continue
   qVals = []
   for action in actions:
     nextState, reward = getNextStateReward(state, action)  # pass state as an argument here
@@ -181,8 +193,29 @@ for state, action in readable_policy.items():
 
 print("Final Policy Map in readable format:")
 for state, action in unique_policies.items():
-    print(f"State: {state} -> Action: {action}")
-input("Press Enter to continue...")
+    print("State:")
+    stateTuple = eval(state)  # convert string back to tuple
+    for row in stateTuple:
+        for item in row:
+            print(str(item).center(6), end="")
+        print("")
+
+    print("Action: {}\n".format(action))
+
+plt.figure(figsize=(20, 10))
+plt.plot(deltas)
+plt.show()
+
+plt.figure(figsize=(20, 10))
+plt.plot(reward_history)
+plt.show()
+
+plt.figure(figsize=(40, 20))
+plt.imshow(reward_history, cmap='hot', interpolation='nearest')
+plt.show()
+
+
+
 """
 print("Final Value Map")
 print(valueMap)
@@ -190,7 +223,7 @@ print("")
 print("")
 """
 # ...
-
+'''
 print("Final State-Action Values")
 print("")
 print("---------------------------")
@@ -210,8 +243,8 @@ for state in states:  # Iterate directly over states
 print("---------------------------")
 print("")
 print("")
-input("Press Enter to continue...")
-
+input("Press Enter to continue...")'''
+'''
 print("Final Policy")
 print("")
 for state in states:  # Iterate directly over states
@@ -231,7 +264,7 @@ print("---------------------------")
 print("")
 print("")
 input("Press Enter to continue...")
-
+'''
 import pandas as pd
 reward_df = pd.DataFrame(reward_history)
 print(reward_df)
