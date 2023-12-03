@@ -1,4 +1,5 @@
 import math
+import os
 import time
 from os import system
 
@@ -6,6 +7,7 @@ from Cell import Cell, EmptyCell
 import random
 from pynput import keyboard
 
+debug = True
 
 class Game:
     def __init__(self, seed=None):
@@ -17,8 +19,13 @@ class Game:
         self.max_value = 0
         self.total_value = 0
         self.total_empty_cells = 14
+        if seed is not None:
+            self.seed = random.seed(seed)
+        else:
+            self.seed = random.seed()
         self.newCell()
         self.newCell()
+        self.last_move = None
 
     def step(self, action):
         action_mapping = {0: "left", 1: "right", 2: "up", 3: "down"}
@@ -26,7 +33,13 @@ class Game:
         return self.getState()
 
     def getState(self):
-        flat_board = [cell.value for row in self.board for cell in row]
+        flat_board = []
+        for row_num, row in enumerate(self.board):
+            for col_num, cell in enumerate(row):
+                right_match = col_num < len(row) - 1 and cell.value == row[col_num + 1].value
+                bottom_match = row_num < len(self.board) - 1 and cell.value == self.board[row_num + 1][col_num].value
+                flat_board.append((cell.value, right_match, bottom_match))
+
         output = {
             "board": flat_board,
             "score": self.score,
@@ -35,8 +48,9 @@ class Game:
             "total_empty_cells": self.total_empty_cells,
             "game_over": self.game_over(),
             "win": self.checkWin()
-            }
+        }
         return output
+
     
 
     def getMaxValue(self):
@@ -55,13 +69,20 @@ class Game:
 
     def game_over(self):
         if self.total_empty_cells == 0:
-            for row in self.board:
-                for i in range(3):
-                    if row[i].value == row[i + 1].value:
+            rows = self.rows()
+            for row_num, row in enumerate(rows):
+                for cell_num, cell in enumerate(row):
+                    # Check right neighbor if not in the rightmost column
+                    if cell_num < 3 and cell == row[cell_num + 1]:
                         return False
-        elif self.max_value < 2048:
+
+                    # Check bottom neighbor if not in the bottommost row
+                    if row_num < 3 and cell == rows[row_num + 1][cell_num]:
+                        return False
+        else:
             return False
         return True
+
 
     def checkWin(self):
         if self.max_value >= 2048:
@@ -92,9 +113,7 @@ class Game:
         else:
             return False
 
-    def newCell(self, seed=None):
-        if seed is not None:
-            random.seed(seed)
+    def newCell(self):
         empty_cells = [(i, j) for i in range(4) for j in range(4)
                                      if self.board[i][j].value == 0]
         if not empty_cells: raise Exception("No more empty cells!")
@@ -109,13 +128,14 @@ class Game:
             return array
         if reverse:
             array = array[::-1].copy()
-        for i in range(3):
-            if array[i] != 0:
-                for j in range(i + 1, 4):
-                    if array[j] == 0:
+        for i in range(3, 0, -1):
+            if array[i] == 0:
+                # If the current cell is empty, place it at the front of the list
+                for j in range(i - 1, -1, -1):
+                    if array[j] != 0:
                         array[i], array[j] = array[j], array[i]
-                        j += 1
-                        i += 1
+                        break
+                    
         for i in range(3, 0, -1):
             if array[i] != 0:
                 for j in range(i - 1, -1, -1):
@@ -164,6 +184,7 @@ class Game:
             rows[i] = self.shift(row, reverse=True)
         if self.fromRows(rows):
             self.newCell()
+        self.last_move = "left"
 
     def right(self):
         rows = self.rows()
@@ -173,6 +194,7 @@ class Game:
             rows[i] = self.shift(row, reverse=False)
         if self.fromRows(rows):
             self.newCell()
+        self.last_move = "right"
 
     def up(self):
         cols = self.cols()
@@ -182,6 +204,7 @@ class Game:
             cols[i] = self.shift(col, reverse=True)
         if self.fromCols(cols):
             self.newCell()
+        self.last_move = "up"
 
     def down(self):
         cols = self.cols()
@@ -191,17 +214,22 @@ class Game:
             cols[i] = self.shift(col, reverse=False)
         if self.fromCols(cols):
             self.newCell()
+        self.last_move = "down"
         
     def render(self):
-        if system == "Windows":
+        if os.name == 'nt' and not debug:
             system("cls")
-        else:
+        elif os.name == 'posix' and not debug:
             system("clear")
+        else:
+            print("\n\n")
         print("Score: {}".format(self.getScore()))
         print("Max Value: {}".format(self.getMaxValue()))
         print("Empty Tiles: {}".format(self.getEmptyTiles()))
         print("Game Over: {}".format(self.game_over()))
         print("Win: {}".format(self.checkWin()))
+        move_mapping = {"left": "←", "right": "→", "up": "↑", "down": "↓", None: "N/A"}
+        print("Last Move: {}".format(move_mapping[self.last_move]))
         print("Board:")
         row_num = 0
         for row in self.board:
@@ -214,53 +242,43 @@ class Game:
         output_row2 = ""
         output_row3 = ""
         output_row4 = ""
-        output_row5 = ""
         for cell_num, cell in enumerate(row):
             if cell_num == 0 and row_num == 0: # Top left corner
                 output_row1 += "╔══════╦"
                 output_row2 += f"║{cell.color}      "+"\33[0m║"
                 output_row4 += f"║{cell.color}      "+"\33[0m║"
-                output_row5 += "╠══════╬"
             elif cell_num == 0 and row_num == 3: # Bottom left corner
                 output_row1 += "╠══════╬"
                 output_row2 += f"║{cell.color}      "+"\33[0m║"
                 output_row4 += f"║{cell.color}      "+"\33[0m║"
-                output_row5 += "╚══════╩"
             elif cell_num == 0: # Left side
                 output_row1 += "╠══════╬"
                 output_row2 += f"║{cell.color}      "+"\33[0m║"
                 output_row4 += f"║{cell.color}      "+"\33[0m║"
-                output_row5 += "╠══════╬"
             elif cell_num == 3 and row_num == 0: # Top right corner
                 output_row1 += "══════╗"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-                output_row5 += "══════╣"
             elif cell_num == 3 and row_num == 3: # Bottom right corner
                 output_row1 += "══════╣"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-                output_row5 += "══════╝"
             elif cell_num == 3: # Right side
                 output_row1 += "══════╣"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-                output_row5 += "══════╣"
             elif row_num == 0: # Top side
                 output_row1 += "══════╦"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-                output_row5 += "══════╬"
             elif row_num == 3: # Bottom side
                 output_row1 += "══════╬"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-                output_row5 += "══════╩"
             else: # Middle
                 output_row1 += "══════╬"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-                output_row5 += "══════╬"
             if cell_num == 3:
                 output_row3 += f"║{cell.color}{str(cell.value).center(6)}\33[0m║"
             else:
@@ -269,7 +287,8 @@ class Game:
         print(output_row2)
         print(output_row3)
         print(output_row4)
-        print(output_row5)
+        if row_num == 3:
+            print("╚══════╩══════╩══════╩══════╝")
 
     def __str__(self):
         return '\n'.join([' '.join([str(cell.value).center(6) for cell in row]) for row in self.board])
@@ -279,7 +298,7 @@ class Game:
         while True:
             with keyboard.Events() as events:
                 event = events.get(1e6)
-                if event is None:
+                if event is None or event.key == keyboard.Key.esc or type(event) == keyboard.Events.Press:
                     continue
                 if event.key == keyboard.Key.left:
                     self.left()
@@ -299,7 +318,7 @@ class Game:
                     else:
                         print("Game Over!")
                     break
-                time.sleep(0.1)
+                time.sleep(0.5)
 
 
 if __name__ == '__main__':
