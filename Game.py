@@ -36,9 +36,11 @@ class Game:
         flat_board = []
         for row_num, row in enumerate(self.board):
             for col_num, cell in enumerate(row):
+                top_match = row_num > 0 and cell.value == self.board[row_num - 1][col_num].value
+                left_match = col_num > 0 and cell.value == row[col_num - 1].value
                 right_match = col_num < len(row) - 1 and cell.value == row[col_num + 1].value
                 bottom_match = row_num < len(self.board) - 1 and cell.value == self.board[row_num + 1][col_num].value
-                flat_board.append((cell.value, right_match, bottom_match))
+                flat_board.append((cell.value, left_match, right_match, top_match, bottom_match))
 
         output = {
             "board": flat_board,
