@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 
 import numpy as np
 import torch
@@ -59,7 +60,7 @@ class Policy(nn.Module):
         return F.softmax(stabilized_scores, dim=-1)
 
 BATCH_SIZE = 100
-SEED = 42
+SEED = None
 epsilon = 0.5
 epsilon_decay_rate = 0.995
 min_epsilon = 0.01  # Minimum epsilon value
@@ -229,6 +230,18 @@ def main():
     non_repeating_moves = []
     repeating_moves = []
     batch_policy_loss = []
+    
+    #Move everything from Outputs into Outputs/Archive/{datetime}
+    date = datetime.now().strftime('%Y%m%d-%H%M')
+    if len(os.listdir("./Outputs/")) > 1:
+        
+        os.system(f"mkdir ./Outputs/Archive/{date}")
+        for file in os.listdir("./Outputs"):
+            if file != "Archive":
+                if os.name == 'nt':
+                    os.system(f"move .\\Outputs\\{file} .\\Outputs\\Archive\\{date}")
+                elif os.name == 'posix':
+                    os.system(f"mv ./Outputs/{file} ./Outputs/Archive/{date}/{file}")
 
     for i_episode in range(100000):
         last_action = -1
@@ -350,7 +363,7 @@ def main():
         # Clear the rewards and saved log probabilities
         del policy.rewards[:]
         del policy.saved_log_probs[:]
-        rewards.append(episode_reward)
+        rewards.append(episode_reward/t)
         max_tiles.append(state['max_value'])
         non_repeating_moves.append(num_non_repeating_moves)
         repeating_moves.append(num_repeating_moves)
@@ -358,9 +371,9 @@ def main():
         running_reward = np.mean(rewards[-100:])
         if i_episode % 5 == 0:
             print(
-                f"Episode: {i_episode} | Steps: {t} | Reward: {episode_reward} | Running reward: {running_reward}".center(10, " "))
+                f"Episode: {str(i_episode).ljust(7)} | Steps: {str(t).ljust(5)} | Reward: {str(episode_reward).ljust(6)} | Average Points Per Step: {f'{episode_reward/t:.5}'.ljust(10)} | Running reward: {f'{running_reward:.5}'.ljust(10)}".center(10, " "))
         if i_episode % 50 == 0:
-            torch.save(policy.state_dict(), "./Outputs/policy.pth")
+            torch.save(policy.state_dict(), f"./Outputs/policy_{date}.pth")
         if i_episode % 1000 == 0 and i_episode > 0:
             plt.figure(figsize=(20, 10))
             plt.plot(rewards, scalex=True, scaley=True)
@@ -389,7 +402,7 @@ def main():
             plt.xlabel('Episode')
             plt.ylabel('Repeating moves')
             plt.savefig(f'./Outputs/repeating_moves_{datetime.now().strftime("%Y%m%d-%H%M")}_{i_episode}.png')
-            play_game("./Outputs/policy.pth")
+            play_game(f"./Outputs/policy_{date}.pth")
         finish_episode(returns)
         
 
