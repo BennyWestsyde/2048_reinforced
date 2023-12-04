@@ -377,75 +377,37 @@ def main():
             torch.save(policy.state_dict(), f"./Outputs/policy_{date}.pth")
         if i_episode % 1000 == 0 and i_episode > 0:
             x = [i for i in range(len(rewards))]
-            x2 = [i^2 for i in range(len(rewards))]
-            x3 = [i^3 for i in range(len(rewards))]
-            rewards_a, rewards_b, rewards_c, rewards_d = np.polyfit(x, rewards, 3)
+            rewards_coeff = np.polyfit(x, rewards, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, rewards)
-            plt.plot(x, np.add(
-                np.add(
-                    np.add(
-                        np.multiply(rewards_a, x3),
-                        np.multiply(rewards_b, x2)
-                    ),
-                    np.multiply(rewards_c, x)
-                ), rewards_d
-                )
-            )
+            plt.plot(x, np.polyval(rewards_coeff, x))
             plt.title('Running rewards after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Running reward')
             plt.savefig(f'./Outputs/rewards_{datetime.now().strftime("%Y%m%d-%H%M")}_{i_episode}.png')
             plt.close()
-            max_tiles_a, max_tiles_b, max_tiles_c, max_tiles_d = np.polyfit(x, max_tiles, 3)
+            max_tiles_coeff = np.polyfit(x, max_tiles, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, max_tiles)
-            plt.plot(x, np.add(
-                np.add(
-                    np.add(
-                        np.multiply(max_tiles_a, x3),
-                        np.multiply(max_tiles_b, x2)
-                    ),
-                    np.multiply(max_tiles_c, x)
-                ), max_tiles_d
-                )
-            )
+            plt.plot(x, np.polyval(max_tiles_coeff, x))
             plt.title('Max tiles after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Max tile')
             plt.savefig(f'./Outputs/max_tiles_{datetime.now().strftime("%Y%m%d-%H%M")}_{i_episode}.png')
             plt.close()
-            non_repeating_moves_a, non_repeating_moves_b, non_repeating_moves_c, non_repeating_moves_d = np.polyfit(x, non_repeating_moves, 3)
+            non_repeating_moves_coeff = np.polyfit(x, non_repeating_moves, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, non_repeating_moves)
-            plt.plot(x, np.add(
-                np.add(
-                    np.add(
-                        np.multiply(non_repeating_moves_a, x3),
-                        np.multiply(non_repeating_moves_b, x2)
-                    ),
-                    np.multiply(non_repeating_moves_c, x)
-                ), non_repeating_moves_d
-                )
-            )
+            plt.plot(x, np.polyval(non_repeating_moves_coeff, x))
             plt.title('Non-repeating moves after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Non-repeating moves')
             plt.savefig(f'./Outputs/non_repeating_moves_{datetime.now().strftime("%Y%m%d-%H%M")}_{i_episode}.png')
             plt.close()
-            repeating_moves_a, repeating_moves_b, repeating_moves_c, repeating_moves_d = np.polyfit(x, repeating_moves, 3)
+            repeating_moves_coeff = np.polyfit(x, repeating_moves, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, repeating_moves)
-            plt.plot(x, np.add(
-                np.add(
-                    np.add(
-                        np.multiply(repeating_moves_a, x3),
-                        np.multiply(repeating_moves_b, x2)
-                    ),
-                    np.multiply(repeating_moves_c, x)
-                ), repeating_moves_d
-                )
-            )
+            plt.plot(x, np.polyval(repeating_moves_coeff, x))
             plt.title('Repeating moves after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Repeating moves')
