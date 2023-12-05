@@ -9,6 +9,8 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 from torch import nn, optim
 from torch.distributions import Categorical
+import torch.optim.lr_scheduler as lr_scheduler
+
 
 import math
 import time
@@ -38,8 +40,8 @@ class Policy(nn.Module):
 
         """
         self.affine1 = nn.Linear(80+4, 128)
-        self.affine2 = nn.Linear(128, 256)
-        self.affine3 = nn.Linear(256, 128)
+        self.affine2 = nn.Linear(128, 128)
+        self.affine3 = nn.Linear(128, 128)
         self.affine4 = nn.Linear(128, 64)
         self.drop = nn.Dropout(p=0.6)
         self.action_head = nn.Linear(64, 4)
@@ -59,17 +61,23 @@ class Policy(nn.Module):
         stabilized_scores = action_scores - max_scores
         return F.softmax(stabilized_scores, dim=-1)
 
-BATCH_SIZE = 100
-SEED = None
-epsilon = 0.5
-epsilon_decay_rate = 0.995
+BATCH_SIZE = 50 # Number of episodes to play before updating the model
+NUM_EPISODES = 100000 # Number of episodes to play
+SEED = None 
+epsilon = 0.5 # Exploration rate
+epsilon_decay_rate = 0.995 # Exponential decay rate for exploration prob
 min_epsilon = 0.01  # Minimum epsilon value
 max_epsilon = 1.0  # Maximum epsilon value
-gamma = 0.99  # Discounting rate
-alpha = 0.05  # Learning rate
+gamma = 0.01  # Discounting rate
+alpha = 0.1  # Learning rate
+
+
+
 env = Game()
 policy = Policy().to(device)
 optimizer = optim.Adam(policy.parameters(), lr=alpha)
+scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5000, verbose=True, eps=NUM_EPISODES)
+
 
 def one_hot_encode_action(action, num_actions=4):
     # Create a one-hot encoded vector for the action
@@ -149,78 +157,6 @@ def calculate_reward(state, next_state):
 
     return reward
 
-def calculate_reward_delta(state, next_state, i_episode, t, same_count, win_flag):
-                score_weight = 0.0
-                max_value_weight = 0.0
-                total_value_weight = 0.0
-                total_empty_cells_weight = 1.0
-                
-                # Score delta
-                if next_state['score'] > state['score'] and state['score'] > 0:
-                    score_delta = math.log(next_state['score'], 2) - math.log(state['score'], 2)
-                elif next_state['score'] > state['score'] and state['score'] == 0:
-                    score_delta = math.log(next_state['score'], 2)
-                else:
-                    score_delta = 0
-                
-                # Max value delta
-                if next_state['max_value'] > state['max_value']:
-                    max_value_delta = math.log(next_state['max_value'], 2) - math.log(state['max_value'], 2)
-                else:
-                    max_value_delta = 0
-
-                # Total value delta
-                if next_state['total_value'] > state['total_value']:
-                    total_value_delta = math.log(next_state['total_value'], 2) - math.log(state['total_value'], 2)
-                else:
-                    total_value_delta = 0
-                
-                # Total empty cells delta
-                if next_state['total_empty_cells'] == state['total_empty_cells']:
-                    same_count += 1
-                    if same_count > 0:
-                        total_empty_cells_delta = -1 * same_count
-                    else:
-                        total_empty_cells_delta = 0
-                elif next_state['total_empty_cells'] > state['total_empty_cells']:
-                    total_empty_cells_delta = next_state['total_empty_cells'] - state['total_empty_cells']
-                    same_count = 0
-                else:
-                    total_empty_cells_delta = 0
-                    same_count = 0
-
-                # Win/Loss Reward
-                if next_state['win'] and not win_flag:
-                    win_flag = True
-                    win_value = 10
-                    loss_value = 0
-                    print("The agent won!")
-                    with open("./Outputs/wins.txt", "a+") as f:
-                        f.write(f"Episode {i_episode} won in {t} steps\n"+str(env.board)+"\n"+str(env.score)+"\n")
-                elif next_state['game_over']:
-                    loss_value = -10
-                    win_value = 0
-                else:
-                    win_value = 0
-                    loss_value = 0
-
-                # Step reward
-                if next_state['score'] > state['score']:
-                    step_reward = 1
-                else:
-                    step_reward = -1
-
-                reward = (score_weight * score_delta +
-                            max_value_weight * max_value_delta +
-                            total_value_weight * total_value_delta +
-                            total_empty_cells_weight * total_empty_cells_delta +
-                            win_value +
-                            loss_value +
-                            step_reward)
-                
-
-                return reward
-
 def main():
     global SEED
     global epsilon
@@ -243,7 +179,7 @@ def main():
                 elif os.name == 'posix':
                     os.system(f"mv ./Outputs/{file} ./Outputs/Archive/{date}/{file}")
 
-    for i_episode in range(100000):
+    for i_episode in range(NUM_EPISODES):
         last_action = -1
         env.reset(seed=SEED)
         epsilon = decay_epsilon()  
@@ -262,10 +198,11 @@ def main():
             next_state = env.step(action)
 
             # REWARD WEIGHTS
-            score_weight = 0.0
+            score_weight = 0
             max_value_weight = 0.0
             total_value_weight = 0.0
             total_empty_cells_weight = 1.0
+            win_loss_weight = 0.0
             total_step_weight = 1.0
             
             # Score delta
@@ -309,13 +246,13 @@ def main():
             # Win/Loss Reward
             if next_state['win'] and not win_flag:
                 win_flag = True
-                win_value = 10
+                win_value = 0 #10
                 loss_value = 0
                 print("The agent won!")
                 with open("./Outputs/wins.txt", "a+") as f:
                     f.write(f"Episode {i_episode} won in {t} steps\n"+str(env.board)+"\n"+str(env.score)+"\n")
             elif next_state['game_over']:
-                loss_value = -5
+                loss_value = 0 #-5
                 win_value = 0
             else:
                 win_value = 0
@@ -332,7 +269,7 @@ def main():
                         total_value_weight * total_value_delta +
                         total_empty_cells_weight * total_empty_cells_delta +
                         win_value +
-                        loss_value +
+                        loss_value * win_loss_weight +
                         step_reward * total_step_weight)
             episode_reward += reward
             policy.rewards.append(reward)
@@ -341,6 +278,10 @@ def main():
                 break
             last_action = action
             state = next_state  # move to next state
+        
+        # Update the learning rate
+        scheduler.step(episode_reward)
+        
         # Compute the policy loss for the current episode
         returns = normalize_rewards(policy.rewards)
         episode_policy_loss = []
@@ -351,7 +292,7 @@ def main():
         batch_policy_loss.extend(episode_policy_loss)
         
         # Update model parameters after every BATCH_SIZE episodes
-        if i_episode % BATCH_SIZE == 0 or i_episode == 100000 - 1:
+        if i_episode % BATCH_SIZE == 0 or i_episode == NUM_EPISODES - 1:
             optimizer.zero_grad()
             batch_loss = torch.cat(batch_policy_loss).sum()
             batch_loss.backward()
@@ -373,14 +314,14 @@ def main():
             print(
                 f"Episode: {str(i_episode).ljust(7)} | Steps: {str(t).ljust(5)} | Reward: {str(episode_reward).ljust(6)} | Average Points Per Step: {f'{episode_reward/t:.5}'.ljust(10)} | Running reward: {f'{running_reward:.5}'.ljust(10)}".center(10, " "))
         if i_episode % 50 == 0:
-            SEED = random.randint(0, 1000000)
+            #SEED = random.randint(0, 1000000)
             torch.save(policy.state_dict(), f"./Outputs/policy_{date}.pth")
         if i_episode % 1000 == 0 and i_episode > 0:
             x = [i for i in range(len(rewards))]
             rewards_coeff = np.polyfit(x, rewards, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, rewards)
-            plt.plot(x, np.polyval(rewards_coeff, x))
+            plt.plot(x, np.polyval(rewards_coeff, x), color="red")
             plt.title('Running rewards after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Running reward')
@@ -389,7 +330,7 @@ def main():
             max_tiles_coeff = np.polyfit(x, max_tiles, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, max_tiles)
-            plt.plot(x, np.polyval(max_tiles_coeff, x))
+            plt.plot(x, np.polyval(max_tiles_coeff, x), color="red")
             plt.title('Max tiles after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Max tile')
@@ -398,7 +339,7 @@ def main():
             non_repeating_moves_coeff = np.polyfit(x, non_repeating_moves, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, non_repeating_moves)
-            plt.plot(x, np.polyval(non_repeating_moves_coeff, x))
+            plt.plot(x, np.polyval(non_repeating_moves_coeff, x), color="red")
             plt.title('Non-repeating moves after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Non-repeating moves')
@@ -407,7 +348,7 @@ def main():
             repeating_moves_coeff = np.polyfit(x, repeating_moves, 3)
             plt.figure(figsize=(20, 10))
             plt.scatter(x, repeating_moves)
-            plt.plot(x, np.polyval(repeating_moves_coeff, x))
+            plt.plot(x, np.polyval(repeating_moves_coeff, x), color="red")
             plt.title('Repeating moves after episode ' + str(i_episode))
             plt.xlabel('Episode')
             plt.ylabel('Repeating moves')
