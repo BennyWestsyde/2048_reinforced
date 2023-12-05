@@ -26,6 +26,7 @@ class Game:
         self.newCell()
         self.newCell()
         self.last_move = None
+        return self.getState()
 
     def step(self, action):
         action_mapping = {0: "left", 1: "right", 2: "up", 3: "down"}
