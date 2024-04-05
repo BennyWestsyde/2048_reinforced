@@ -123,6 +123,8 @@ class TestGame:
         # Mixed Zero and Non-Zero Cells
         assert game.shift([Cell(2), Cell(0), Cell(4), Cell(8)], reverse=False) == [Cell(0), Cell(2), Cell(4), Cell(8)]
         assert game.shift([Cell(4), Cell(0), Cell(2), Cell(0)], reverse=False) == [Cell(0), Cell(0), Cell(4), Cell(2)]
+        # Collapse Flip Bug Fix
+        assert game.shift([Cell(4), Cell(8), Cell(2), Cell(2)], reverse=False) == [Cell(0), Cell(4), Cell(8), Cell(4)]
 
 
     def test_LeftShift(self):
@@ -147,6 +149,8 @@ class TestGame:
         # Mixed Zero and Non-Zero Cells
         assert game.shift([Cell(0), Cell(2), Cell(4), Cell(8)], reverse=True) == [Cell(2), Cell(4), Cell(8), Cell(0)]
         assert game.shift([Cell(8), Cell(0), Cell(2), Cell(0)], reverse=True) == [Cell(8), Cell(2), Cell(0), Cell(0)]
+        # Collapse Flip Bug Fix
+        assert game.shift([Cell(2), Cell(2), Cell(8), Cell(4)], reverse=True) == [Cell(4), Cell(8), Cell(4), Cell(0)]
 
 
 

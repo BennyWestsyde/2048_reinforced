@@ -9,6 +9,7 @@ from pynput import keyboard
 
 debug = True
 
+
 class Game:
     def __init__(self, seed=None):
         self.reset(seed)
@@ -37,26 +38,12 @@ class Game:
         flat_board = []
         for row_num, row in enumerate(self.board):
             for col_num, cell in enumerate(row):
-                """
-                top_match = row_num > 0 and cell.value == self.board[row_num - 1][col_num].value
-                left_match = col_num > 0 and cell.value == row[col_num - 1].value
-                right_match = col_num < len(row) - 1 and cell.value == row[col_num + 1].value
-                bottom_match = row_num < len(self.board) - 1 and cell.value == self.board[row_num + 1][col_num].value
-                """
-                flat_board.append((cell.value))#, left_match, right_match, top_match, bottom_match))
+                flat_board.append(cell.value)
 
         output = {
-            "board": flat_board,
-            "score": self.score,
-            "max_value": self.max_value,
-            "total_value": self.total_value,
-            "total_empty_cells": self.total_empty_cells,
-            "game_over": self.game_over(),
-            "win": self.checkWin()
+            "board": flat_board
         }
         return output
-
-    
 
     def getMaxValue(self):
         return self.max_value
@@ -88,7 +75,6 @@ class Game:
             return False
         return True
 
-
     def checkWin(self):
         if self.max_value >= 2048:
             return True
@@ -119,8 +105,8 @@ class Game:
             return False
 
     def newCell(self):
-        empty_cells = [(i, j) for i in range(4) for j in range(4)
-                                     if self.board[i][j].value == 0]
+        random.seed(self.seed)
+        empty_cells = [(i, j) for i in range(4) for j in range(4) if self.board[i][j].value == 0]
         if not empty_cells: raise Exception("No more empty cells!")
         row, col = random.choice(empty_cells)
         self.board[row][col] = Cell(2)
@@ -133,6 +119,7 @@ class Game:
             return array
         if reverse:
             array = array[::-1].copy()
+
         for i in range(3, 0, -1):
             if array[i] == 0:
                 # If the current cell is empty, place it at the front of the list
@@ -140,32 +127,22 @@ class Game:
                     if array[j] != 0:
                         array[i], array[j] = array[j], array[i]
                         break
-                    
+
         for i in range(3, 0, -1):
             if array[i] != 0:
                 for j in range(i - 1, -1, -1):
                     if array[i] == array[j]:
                         array[j], array[i] = self.merge(array[i], array[j])
+                        i -= 1
                     break
-        if reverse:
 
-            for i in range(3, 0, -1):
-                if array[i] != 0:
-                    continue
-                else:
-                    for j in range(i - 1, -1, -1):
-                        if array[j] != 0:
-                            array[i], array[j] = array[j], array[i]
-                            break
-        else:
-            for i in range(3):
-                if array[i] == 0:
-                    continue
-                else:
-                    for j in range(i + 1, 4):
-                        if array[j] == 0:
-                            array[i], array[j] = array[j], array[i]
-                            break
+        for i in range(3, 0, -1):
+            if array[i] == 0:
+                # If the current cell is empty, place it at the front of the list
+                for j in range(i - 1, -1, -1):
+                    if array[j] != 0:
+                        array[i], array[j] = array[j], array[i]
+                        break
 
         if reverse:
             array = array[::-1].copy()
@@ -220,7 +197,7 @@ class Game:
         if self.fromCols(cols):
             self.newCell()
         self.last_move = "down"
-        
+
     def render(self):
         if os.name == 'nt' and not debug:
             system("cls")
@@ -248,39 +225,39 @@ class Game:
         output_row3 = ""
         output_row4 = ""
         for cell_num, cell in enumerate(row):
-            if cell_num == 0 and row_num == 0: # Top left corner
+            if cell_num == 0 and row_num == 0:  # Top left corner
                 output_row1 += "╔══════╦"
-                output_row2 += f"║{cell.color}      "+"\33[0m║"
-                output_row4 += f"║{cell.color}      "+"\33[0m║"
-            elif cell_num == 0 and row_num == 3: # Bottom left corner
+                output_row2 += f"║{cell.color}      " + "\33[0m║"
+                output_row4 += f"║{cell.color}      " + "\33[0m║"
+            elif cell_num == 0 and row_num == 3:  # Bottom left corner
                 output_row1 += "╠══════╬"
-                output_row2 += f"║{cell.color}      "+"\33[0m║"
-                output_row4 += f"║{cell.color}      "+"\33[0m║"
-            elif cell_num == 0: # Left side
+                output_row2 += f"║{cell.color}      " + "\33[0m║"
+                output_row4 += f"║{cell.color}      " + "\33[0m║"
+            elif cell_num == 0:  # Left side
                 output_row1 += "╠══════╬"
-                output_row2 += f"║{cell.color}      "+"\33[0m║"
-                output_row4 += f"║{cell.color}      "+"\33[0m║"
-            elif cell_num == 3 and row_num == 0: # Top right corner
+                output_row2 += f"║{cell.color}      " + "\33[0m║"
+                output_row4 += f"║{cell.color}      " + "\33[0m║"
+            elif cell_num == 3 and row_num == 0:  # Top right corner
                 output_row1 += "══════╗"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-            elif cell_num == 3 and row_num == 3: # Bottom right corner
+            elif cell_num == 3 and row_num == 3:  # Bottom right corner
                 output_row1 += "══════╣"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-            elif cell_num == 3: # Right side
+            elif cell_num == 3:  # Right side
                 output_row1 += "══════╣"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-            elif row_num == 0: # Top side
+            elif row_num == 0:  # Top side
                 output_row1 += "══════╦"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-            elif row_num == 3: # Bottom side
+            elif row_num == 3:  # Bottom side
                 output_row1 += "══════╬"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"
-            else: # Middle
+            else:  # Middle
                 output_row1 += "══════╬"
                 output_row2 += f"{cell.color}      \33[0m║"
                 output_row4 += f"{cell.color}      \33[0m║"

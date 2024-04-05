@@ -39,10 +39,11 @@ class Policy(nn.Module):
         
 
         """
-        self.affine1 = nn.Linear(80+4, 128)
-        self.affine2 = nn.Linear(128, 128)
-        self.affine3 = nn.Linear(128, 128)
-        self.affine4 = nn.Linear(128, 64)
+        self.affine1 = nn.Linear(16+4, 128)
+        self.affine2 = nn.Linear(128, 256)
+        self.affine3 = nn.Linear(256, 256)
+        self.affine4 = nn.Linear(256, 128)
+        self.affine5 = nn.Linear(128, 64)
         self.drop = nn.Dropout(p=0.6)
         self.action_head = nn.Linear(64, 4)
 
@@ -54,6 +55,7 @@ class Policy(nn.Module):
         x = F.relu(self.affine2(x))
         x = F.relu(self.affine3(x))
         x = F.relu(self.affine4(x))
+        x = F.relu(self.affine5(x))
         x = self.drop(x)
         action_scores = self.action_head(x)
         # Stabilizing before softmax
@@ -61,22 +63,24 @@ class Policy(nn.Module):
         stabilized_scores = action_scores - max_scores
         return F.softmax(stabilized_scores, dim=-1)
 
-BATCH_SIZE = 50 # Number of episodes to play before updating the model
-NUM_EPISODES = 100000 # Number of episodes to play
-SEED = None 
-epsilon = 0.5 # Exploration rate
-epsilon_decay_rate = 0.995 # Exponential decay rate for exploration prob
-min_epsilon = 0.01  # Minimum epsilon value
+
+BATCH_SIZE = 100 # Number of episodes to play before updating the model
+NUM_EPISODES = 1000000 # Number of episodes to play
+SEED = random.randint(0, 1000000) # Random seed for the environment
+epsilon = 0.2 # Exploration rate
+epsilon_decay_rate = 0.75 # Exponential decay rate for exploration prob
+min_epsilon = 0.001  # Minimum epsilon value
 max_epsilon = 1.0  # Maximum epsilon value
-gamma = 0.01  # Discounting rate
-alpha = 0.1  # Learning rate
+gamma = 0.01
+# Discounting rate
+alpha = 0.15  # Learning rate
 
 
 
 env = Game()
 policy = Policy().to(device)
 optimizer = optim.Adam(policy.parameters(), lr=alpha)
-scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5000, verbose=True, eps=NUM_EPISODES)
+scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=BATCH_SIZE, verbose=True, factor=0.999, min_lr=0.00001)
 
 
 def one_hot_encode_action(action, num_actions=4):
@@ -89,7 +93,7 @@ def one_hot_encode_action(action, num_actions=4):
 def select_action(state: dict, last_action: int, action_policy: Optional[Policy] = policy, epsilon=0.1):
     if random.random() < epsilon:
         return random.choice([0, 1, 2, 3])  # Randomly select an action
-    flat_board = [cell for row in state['board'] for cell in row]
+    flat_board = state['board']#[cell for row in state['board'] for cell in row]
     # Include the last action in the state
     last_action_one_hot = one_hot_encode_action(last_action)
     state_tensor = torch.FloatTensor(flat_board + last_action_one_hot).unsqueeze(0).to(device)
@@ -166,6 +170,7 @@ def main():
     non_repeating_moves = []
     repeating_moves = []
     batch_policy_loss = []
+    batch_reward_slopes = []
     
     #Move everything from Outputs into Outputs/Archive/{datetime}
     date = datetime.now().strftime('%Y%m%d-%H%M')
@@ -181,9 +186,8 @@ def main():
 
     for i_episode in range(NUM_EPISODES):
         last_action = -1
-        env.reset(seed=SEED)
-        epsilon = decay_epsilon()  
-        state = env.getState()
+        state = env.reset(seed=SEED)
+        epsilon = decay_epsilon()  # Decay epsilon
         episode_reward = 0
         
         t = 0
@@ -198,24 +202,23 @@ def main():
             next_state = env.step(action)
 
             # REWARD WEIGHTS
-            score_weight = 0
+            score_weight = 0.0
             max_value_weight = 0.0
             total_value_weight = 0.0
-            total_empty_cells_weight = 1.0
+            total_empty_cells_weight = 0.0
+            repeating_moves_weight = 0.0
             win_loss_weight = 0.0
             total_step_weight = 1.0
             
             # Score delta
-            if next_state['score'] > state['score'] and state['score'] > 0:
-                score_delta = next_state['score'] - state['score']
-            elif next_state['score'] > state['score'] and state['score'] == 0:
-                score_delta = math.log(next_state['score'], 2)
+            if next_state['score'] > state['score']:
+                score_delta = math.log2(next_state['score'] - state['score'])
             else:
                 score_delta = 0
 
             # Max value delta
             if next_state['max_value'] > state['max_value']:
-                max_value_delta = math.log2(next_state['max_value']) - math.log2(state['max_value'])
+                max_value_delta = math.log2(next_state['max_value'])
             else:
                 max_value_delta = 0
 
@@ -241,8 +244,13 @@ def main():
 
             if action == last_action:
                 num_repeating_moves += 1
+                if next_state['total_value'] == state['total_value'] and same_count:
+                    repeating_moves_value -= same_count
             else:
                 num_non_repeating_moves += 1
+                repeating_moves_value = 0
+                
+                
             # Win/Loss Reward
             if next_state['win'] and not win_flag:
                 win_flag = True
@@ -268,6 +276,7 @@ def main():
                         max_value_weight * max_value_delta +
                         total_value_weight * total_value_delta +
                         total_empty_cells_weight * total_empty_cells_delta +
+                        repeating_moves_weight * repeating_moves_value +
                         win_value +
                         loss_value * win_loss_weight +
                         step_reward * total_step_weight)
@@ -279,8 +288,7 @@ def main():
             last_action = action
             state = next_state  # move to next state
         
-        # Update the learning rate
-        scheduler.step(episode_reward)
+        scheduler.step(episode_reward/t)
         
         # Compute the policy loss for the current episode
         returns = normalize_rewards(policy.rewards)
@@ -291,32 +299,49 @@ def main():
         # Accumulate policy loss over multiple episodes
         batch_policy_loss.extend(episode_policy_loss)
         
+        # Update the learning rate
+        if i_episode % (BATCH_SIZE/4) == 0 and i_episode > 0:
+            batch_x_range = [i for i in range(int(BATCH_SIZE/4))]
+            batch_step_reward_slope = np.polyfit(batch_x_range, rewards[-1*int(BATCH_SIZE/4):], 1)[0]
+            batch_reward_slopes.append(batch_step_reward_slope)
+            print(f"Learning rate: {optimizer.param_groups[0]['lr']:.8f}")
+            print(f"Epsilon: {epsilon}")
+            print(f"Episode: {i_episode}")
+            print(f"Batch reward slope: {batch_step_reward_slope*(BATCH_SIZE/4):.5f}")
+            print(f"Seed: {SEED}")
+            #print("Updating seed...")
+            #SEED = random.randint(0, 1000000)
+                
         # Update model parameters after every BATCH_SIZE episodes
-        if i_episode % BATCH_SIZE == 0 or i_episode == NUM_EPISODES - 1:
+        if i_episode % BATCH_SIZE == 0 or i_episode == NUM_EPISODES - 1 and i_episode > 0:
+            print("Updating model parameters...")
             optimizer.zero_grad()
             batch_loss = torch.cat(batch_policy_loss).sum()
+            print(f"Batch loss: {batch_loss:.8f}")
+            print(f"Batch reward slope: {np.mean(batch_reward_slopes)*BATCH_SIZE:.5f}")
             batch_loss.backward()
             torch.nn.utils.clip_grad_norm_(policy.parameters(), max_norm=1.0)
             optimizer.step()
             batch_policy_loss = []  # Reset for the next batch
-            #SEED = random.randint(0, 1000000)
+            
 
         # Clear the rewards and saved log probabilities
         del policy.rewards[:]
         del policy.saved_log_probs[:]
-        rewards.append(episode_reward/t)
+        rewards.append(episode_reward)
         max_tiles.append(state['max_value'])
         non_repeating_moves.append(num_non_repeating_moves)
         repeating_moves.append(num_repeating_moves)
         
         running_reward = np.mean(rewards[-100:])
         if i_episode % 5 == 0:
+            max_value = state['max_value']
             print(
-                f"Episode: {str(i_episode).ljust(7)} | Steps: {str(t).ljust(5)} | Reward: {str(episode_reward).ljust(6)} | Average Points Per Step: {f'{episode_reward/t:.5}'.ljust(10)} | Running reward: {f'{running_reward:.5}'.ljust(10)}".center(10, " "))
+                f"Episode: {i_episode:<6} | Steps: {t:<5} | Reward: {episode_reward:<8.4} | Max Tile: {max_value:<5n} | Running reward: {f'{running_reward:<4.3f}'.ljust(7)}".center(10, " "))
         if i_episode % 50 == 0:
             #SEED = random.randint(0, 1000000)
             torch.save(policy.state_dict(), f"./Outputs/policy_{date}.pth")
-        if i_episode % 1000 == 0 and i_episode > 0:
+        if i_episode % (NUM_EPISODES/100) == 0 and i_episode > 0:
             x = [i for i in range(len(rewards))]
             rewards_coeff = np.polyfit(x, rewards, 3)
             plt.figure(figsize=(20, 10))
@@ -353,28 +378,30 @@ def main():
             plt.xlabel('Episode')
             plt.ylabel('Repeating moves')
             plt.savefig(f'./Outputs/repeating_moves_{datetime.now().strftime("%Y%m%d-%H%M")}_{i_episode}.png')
-        if i_episode % 10000 == 0 and i_episode > 0:
             play_game(f"./Outputs/policy_{date}.pth")
         finish_episode(returns)
         
 
-def play_game(policy_path):
+def play_game(policy_path, seed=None):
     policy = Policy()
     policy.load_state_dict(torch.load(policy_path, map_location=device))
     policy.to(device).eval()
 
 
-    env = Game()
+    env = Game(SEED)
 
     env.reset()
     state = env.getState()
     last_action = -1
     play_ep = 0.0
+    same_move_count = 0
     while not env.game_over():
         env.render()
         action = select_action(state, last_action, policy, epsilon=play_ep)
         if action == last_action:
-            play_ep += 0.1
+            same_move_count += 1
+            if same_move_count > 5:
+                break
         else:
             play_ep = 0.0
         last_action = action

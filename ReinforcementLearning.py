@@ -12,9 +12,9 @@ game = Game()
 gamma = 1  # discounting rate
 rewardSize = -1
 gridSize = 4
-terminationStates = [game.keys["total_empty_cells"] == 0, game.keys["max_value"] == 2048]
+terminationStates = [game.game_over(), game.checkWin()]
 actions = [game.left, game.right, game.up, game.down]
-numIterations = 100000
+numIterations = 10000
 epsilon = 0.9  # exploration constant
 min_epsilon = 0.1
 max_epsilon = 1.0
@@ -70,7 +70,7 @@ def actionRewardProb(state, action):
 
   # reward if max value is in a corner
   corner_max_vals = [after_action[i][j] for i in [0, 3] for j in [0, 3]]
-  if max(corner_max_vals) == temp_board.getHighestTile():
+  if max(corner_max_vals) == temp_board.getMaxValue():
     reward_if_action += 25
 
   return reward_if_action
@@ -206,14 +206,11 @@ plt.figure(figsize=(20, 10))
 plt.plot(deltas)
 plt.show()
 
-plt.figure(figsize=(20, 10))
-plt.plot(reward_history)
-plt.show()
-
+'''
 plt.figure(figsize=(40, 20))
 plt.imshow(reward_history, cmap='hot', interpolation='nearest')
 plt.show()
-
+'''
 
 
 """
