@@ -14,7 +14,6 @@ from collections import deque
 from Game import Game
 import matplotlib.pyplot as plt
 
-
 curr_dt = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
 if not os.path.exists("Outputs"):
     os.makedirs("Outputs")
@@ -40,7 +39,6 @@ if not os.path.exists(f"Outputs/{curr_dt}/images/high_tiles"):
 if not os.path.exists(f"Outputs/{curr_dt}/images/moves_before_break"):
     os.makedirs(f"Outputs/{curr_dt}/images/moves_before_break")
 
-
 if not os.path.exists(f"Outputs/{curr_dt}/average_scores.csv"):
     with open(f"Outputs/{curr_dt}/average_scores.csv", "w") as f:
         f.write("phase,average_score\n")
@@ -52,9 +50,6 @@ if not os.path.exists(f"Outputs/{curr_dt}/high_tiles.csv"):
 if not os.path.exists(f"Outputs/{curr_dt}/moves_before_break.csv"):
     with open(f"Outputs/{curr_dt}/moves_before_break.csv", "w") as f:
         f.write("phase,moves_before_break\n")
-
-
-
 
 
 class DuelingDQN(nn.Module):
@@ -72,6 +67,7 @@ class DuelingDQN(nn.Module):
         q_values = value + advantage - advantage_mean
         return q_values
 
+
 class ReplayBuffer:
     def __init__(self, capacity):
         self.buffer = deque(maxlen=capacity)
@@ -84,6 +80,7 @@ class ReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
+
 
 class DQNAgent:
     def __init__(self, state_size, action_size, batch_size, model):
@@ -138,6 +135,7 @@ class DQNAgent:
     def push_replay_buffer(self, *args):
         self.replay_buffer.push(*args)
 
+
 def test_agent(game, agent, num_tests=10):
     total_scores = []
     total_high_tile = []
@@ -182,6 +180,7 @@ def test_agent(game, agent, num_tests=10):
     print(f"Average Score over {num_tests} tests: {average_score}, Break Percentage: {average_break_count}%")
     return average_score, average_high_tile, average_moves_before_break
 
+
 def save_plot(file):
     temp_df = pandas.read_csv(f"Outputs/{curr_dt}/{file}", index_col=0, header=0)
     temp_df.columns = ['value']
@@ -191,28 +190,34 @@ def save_plot(file):
     p = np.poly1d(z)
 
     # add trendline to plot
-    plt.plot(temp_df.index, p(temp_df.index),color='red')
+    plt.plot(temp_df.index, p(temp_df.index), color='red')
     if 'average_score' in file:
         plt.title('Average Scores Over Phases')
         plt.ylabel('Average Score')
-        output_path = f"Outputs/{curr_dt}/images/average_scores/{phase+1}.png"
+        output_path = f"Outputs/{curr_dt}/images/average_scores/{phase + 1}.png"
     elif 'high_tiles' in file:
         plt.title('High Tile Over Phases')
         plt.ylabel('High Tile')
-        output_path = f"Outputs/{curr_dt}/images/high_tiles/{phase+1}.png"
+        output_path = f"Outputs/{curr_dt}/images/high_tiles/{phase + 1}.png"
     elif 'moves_before_break' in file:
         plt.title('Moves Before Break Over Phases')
         plt.ylabel('Moves Before Break')
-        output_path = f"Outputs/{curr_dt}/images/moves_before_break/{phase+1}.png"
+        output_path = f"Outputs/{curr_dt}/images/moves_before_break/{phase + 1}.png"
     plt.xlabel('Episode')
     plt.grid(True)
     plt.savefig(output_path)
     plt.close()
 
+
 def save_videos(phase):
-    average_thread = threading.Thread(target=os.system, args=(f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/average_scores/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/average_scores_{phase}.mp4"))
-    high_thread = threading.Thread(target=os.system, args=(f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/high_tiles/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/high_tiles_{phase}.mp4"))
-    moves_thread = threading.Thread(target=os.system, args=(f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/moves_before_break/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/moves_before_break_{phase}.mp4"))
+    if phase <= 100:
+        return
+    average_thread = threading.Thread(target=os.system, args=(
+    f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/average_scores/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/average_scores_{phase}.mp4",))
+    high_thread = threading.Thread(target=os.system, args=(
+    f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/high_tiles/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/high_tiles_{phase}.mp4",))
+    moves_thread = threading.Thread(target=os.system, args=(
+    f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/moves_before_break/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/moves_before_break_{phase}.mp4",))
     average_thread.start()
     high_thread.start()
     moves_thread.start()
@@ -229,9 +234,6 @@ batch_size = 64
 num_tests = 10
 agent = DQNAgent(state_size, action_size, batch_size, DuelingDQN)
 repetition_allowance = 20
-avg_t = threading.Thread(target=save_plot, args=("average_scores.csv",))
-high_t = threading.Thread(target=save_plot, args=("high_tiles.csv",))
-moves_t = threading.Thread(target=save_plot, args=("moves_before_break.csv",))
 
 # Main loop for multiple training and testing phases
 last_average_score = None  # Track the last average score for performance comparison
@@ -271,7 +273,7 @@ for phase in range(num_phases):
     average_score, high_tile, moves_before_break = test_agent(game, agent, num_tests=num_tests)
 
     with open(f"Outputs/{curr_dt}/average_scores.csv", "a") as f:
-        f.write(f"{phase+1},{average_score}\n")
+        f.write(f"{phase + 1},{average_score}\n")
     with open(f"Outputs/{curr_dt}/high_tiles.csv", "a") as f:
         f.write(f"{phase + 1},{high_tile}\n")
     with open(f"Outputs/{curr_dt}/moves_before_break.csv", "a") as f:
@@ -290,10 +292,12 @@ for phase in range(num_phases):
                 param_group['lr']
         print(f"Performance threshold reached, adjusted performance threshold to {performance_threshold}")
     else:
-        agent.epsilon = min(agent.epsilon_max, agent.epsilon * (1/agent.epsilon_decay))  # Slightly increase epsilon if performance is below threshold
+        agent.epsilon = min(agent.epsilon_max, agent.epsilon * (
+                    1 / agent.epsilon_decay))  # Slightly increase epsilon if performance is below threshold
 
     last_average_score = average_score
-    print(f"End of Phase {phase + 1} - Adjusted Epsilon: {agent.epsilon}, Learning Rate: {agent.optimizer.param_groups[0]['lr']}")
+    print(
+        f"End of Phase {phase + 1} - Adjusted Epsilon: {agent.epsilon}, Learning Rate: {agent.optimizer.param_groups[0]['lr']}")
 
 print("--- Final Testing ---")
 torch.save(agent.model.state_dict(), f"Models/{curr_dt}/final_model.pth")

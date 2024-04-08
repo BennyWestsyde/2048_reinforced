@@ -41,7 +41,7 @@ class Game:
 		if self.game_over():
 			return -10
 		if prev_state['board'] == new_state['board']:
-			return -0.05
+			return -0.1
 		return (new_state['score'] - prev_state['score']) / 2
 
 	def randomMove(self, count=1):
