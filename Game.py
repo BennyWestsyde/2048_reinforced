@@ -36,13 +36,13 @@ class Game:
 		return self.getState()
 
 	def reward(self, prev_state, action, new_state):
-		if self.game_over():
-			return -10
 		if self.checkWin():
 			return 10
+		if self.game_over():
+			return -10
 		if prev_state['board'] == new_state['board']:
-			return -0.5
-		return new_state['score'] - prev_state['score'] % 2
+			return -0.05
+		return (new_state['score'] - prev_state['score']) / 2
 
 	def randomMove(self, count=1):
 		moves = []

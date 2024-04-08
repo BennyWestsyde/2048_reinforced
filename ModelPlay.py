@@ -1,4 +1,6 @@
+import random
 import sys
+import time
 
 import torch
 import torch.nn as nn
@@ -32,21 +34,35 @@ def load_model(model_path, model_class):
     return model
 
 # Function to play and render a game
-def play_and_render_game(model, game, num_steps=200):
+def play_and_render_game(model, game, num_steps=None):
     state = game.reset()
-    for step in range(num_steps):
-        # Assuming state is a dictionary with 'board' key holding the game state
-        state_tensor = torch.FloatTensor(state['board']).unsqueeze(0)
-        with torch.no_grad():
-            q_values = model(state_tensor)
-        action = q_values.max(1)[1].item()
+    done = False
+    if num_steps is None:
+        while not done:
+            state_tensor = torch.FloatTensor(state['board']).unsqueeze(0)
+            with torch.no_grad():
+                q_values = model(state_tensor)
+            action = q_values.max(1)[1].item()
 
-        next_state, reward, done = game.step(action)
-        game.render()  # Render the game; implement this method in Game class
+            next_state, reward, done = game.step(action)
+            game.render()
+            time.sleep(0.5)  # Sleep for half a second
+            state = next_state
+    else:
+        for step in range(num_steps):
+            # Assuming state is a dictionary with 'board' key holding the game state
+            state_tensor = torch.FloatTensor(state['board']).unsqueeze(0)
+            with torch.no_grad():
+                q_values = model(state_tensor)
+            action = q_values.max(1)[1].item()
 
-        if done:
-            break
-        state = next_state
+            next_state, reward, done = game.step(action)
+            game.render()  # Render the game; implement this method in Game class
+
+            if done:
+                break
+            state = next_state
+            time.sleep(0.5)  # Sleep for half a second
 
 # Paths to the model and the game environment
 if __name__ == '__main__':
@@ -55,6 +71,7 @@ if __name__ == '__main__':
     else:
         print("Please provide the path to the model file")
         exit()
+    random.seed()
     game_env = Game()  # Initialize your game environment
 
     # Load the model
