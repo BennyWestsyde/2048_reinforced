@@ -13,6 +13,9 @@ import random
 from collections import deque
 from Game import Game
 import matplotlib.pyplot as plt
+import asyncio
+
+from ffmpeg.asyncio import FFmpeg
 
 curr_dt = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
 if not os.path.exists("Outputs"):
@@ -124,9 +127,11 @@ class DQNAgent:
         current_q = self.model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
         next_q = self.model(next_states).max(1)[0]
         expected_q = rewards + self.gamma * next_q * (1 - dones)
-
-        #agent.epsilon = self.epsilon_min + (1 - self.epsilon_min) * math.exp(
-        #    -1. * episode / 500)
+        # if the last reward was over 0, we should narrow the epsilon
+        if rewards[-1] > 0:
+            agent.epsilon = max(agent.epsilon_min, agent.epsilon * 0.9999)
+        else:
+            agent.epsilon = min(agent.epsilon_max, agent.epsilon * 1.00001)
         loss = F.mse_loss(current_q, expected_q.detach())
         self.optimizer.zero_grad()
         loss.backward()
@@ -168,10 +173,10 @@ def test_agent(game, agent, num_tests=10):
         total_moves_before_break.append(total_actions)
         total_high_tile.append(game.max_value)
         if break_flag:
-            print(f"Test Game: {test + 1}, Score: {score}, Breaking due to repetition")
+            print(f"Test Game: {test + 1}\t|\tScore: {score}\t|\tBreaking due to repetition")
             break_count += 1
         else:
-            print(f"Test Game: {test + 1}, Score: {score}")
+            print(f"Test Game: {test + 1}\t|\tScore: {score}\t|\tNon-Breaking Game!!!")
     average_score = sum(total_scores) / num_tests
     average_break_count = (break_count / num_tests) * 100
     average_high_tile = sum(total_high_tile) / num_tests
@@ -186,11 +191,11 @@ def save_plot(file):
     temp_df.columns = ['value']
     plt.figure(figsize=(10, 6))
     plt.scatter(temp_df.index, temp_df['value'])
-    z = np.polyfit(temp_df.index, temp_df['value'], 1)
-    p = np.poly1d(z)
+    z = np.polyfit(temp_df.index, temp_df['value'], 1) if len(temp_df.index) > 1 else [0, 0]
+    p = np.poly1d(z) if len(temp_df.index) > 1 else lambda x: 0
 
     # add trendline to plot
-    plt.plot(temp_df.index, p(temp_df.index), color='red')
+    plt.plot(temp_df.index, p(temp_df.index), color='red') if len(temp_df.index) > 1 else None
     if 'average_score' in file:
         plt.title('Average Scores Over Phases')
         plt.ylabel('Average Score')
@@ -209,21 +214,39 @@ def save_plot(file):
     plt.close()
 
 
-def save_videos(phase):
-    if phase <= 100:
+async def save_vid(category, curr_phase):
+    # get number of png files in the directory
+    num_files = len([f for f in os.listdir(f"Outputs/{curr_dt}/images/{category}") if f.endswith('.png')])
+    cmd = [
+        "ffmpeg",
+        "-y",  # Overwrite output files without asking
+        "-r", num_files//100,  # Frame rate
+        "-c:v", "libx264",  # Video codec: H.264
+        "-i", f"Outputs/{curr_dt}/images/{category}/%d.png",  # Input files
+        "-vf", "scale=1280:-1",  # Video filter: scale video
+        "-preset", "veryslow",  # Encoding preset
+        "-crf", "24",  # Constant Rate Factor
+        "-f", "mp4",  # Format
+        f"Outputs/{curr_dt}/{category}_{curr_phase}.mp4"  # Output file
+    ]
+
+    # Create a subprocess to execute the FFmpeg command
+    process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+
+    # Wait for the subprocess to finish
+    stdout, stderr = await process.communicate()
+
+    # Check if there were any errors
+    if process.returncode != 0:
+        print(f"FFmpeg error: {stderr.decode()}")
+
+
+def save_videos(curr_phase):
+    if curr_phase <= 100:
         return
-    average_thread = threading.Thread(target=os.system, args=(
-    f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/average_scores/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/average_scores_{phase}.mp4",))
-    high_thread = threading.Thread(target=os.system, args=(
-    f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/high_tiles/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/high_tiles_{phase}.mp4",))
-    moves_thread = threading.Thread(target=os.system, args=(
-    f"ffmpeg -r 100 -i Outputs/{curr_dt}/images/moves_before_break/%d.png -vcodec mpeg4 -y Outputs/{curr_dt}/moves_before_break_{phase}.mp4",))
-    average_thread.start()
-    high_thread.start()
-    moves_thread.start()
-    average_thread.join()
-    high_thread.join()
-    moves_thread.join()
+    asyncio.run(save_vid("average_scores", curr_phase))
+    asyncio.run(save_vid("high_tiles", curr_phase))
+    asyncio.run(save_vid("moves_before_break", curr_phase))
 
 
 # Initialize game and agent
@@ -237,20 +260,23 @@ repetition_allowance = 20
 
 # Main loop for multiple training and testing phases
 last_average_score = None  # Track the last average score for performance comparison
-num_phases = 10000
+num_phases = 100000
 num_episodes_per_phase = 100
-num_actions_per_episode = 1
+num_actions_per_episode = 5
 num_outputs_per_episode = 10
-save_model_interval = 100
+save_model_interval = 1000
 save_plot_interval = 1
-save_video_interval = num_phases // 10
+save_video_interval = num_phases // 1000
 performance_threshold = 20
-total_reward = 0
+cross_phase_total_score = 0
+episode_scores = []
 
 for phase in range(num_phases):
-    print(f"------ Starting Training Phase {phase + 1} ------")
+    phase_total_score = 0
+    print(f"============== Starting Training Phase {phase + 1} ==============")
     state = game.getRandomState()
     for episode in range(num_episodes_per_phase):
+        episode_total_score = 0
         temp_game = Game(state=state)
         for _ in range(num_actions_per_episode):
             action = agent.act(state['board'])
@@ -258,18 +284,22 @@ for phase in range(num_phases):
             agent.push_replay_buffer(state['board'], action, reward, next_state['board'], done)
             agent.learn()
             state = next_state
-            total_reward += reward
+            episode_total_score += reward
             if done:
                 break
+        episode_scores.append(episode_total_score)
+        phase_total_score += episode_total_score
 
-        if episode % (num_episodes_per_phase // num_outputs_per_episode) == 0:
-            print(f"Episode: {episode}, Total Reward: {total_reward}, Epsilon: {agent.epsilon}")
+        if episode % (num_episodes_per_phase // num_outputs_per_episode) == 0 and episode > 0:
+            print(f"Episode: {episode-10}-{episode}\t|\tTotal Reward: {sum(episode_scores[episode - (num_episodes_per_phase // num_outputs_per_episode):episode])}\t\t|\tEpsilon: {agent.epsilon}")
 
+    cross_phase_total_score += phase_total_score
     if phase % save_model_interval == 0:
         torch.save(agent.model.state_dict(), f"Models/{curr_dt}/model_phase_{phase + 1}.pth")
     if phase % save_video_interval == 0:
         save_videos(phase)
-    print(f"--- Starting Testing Phase after Training Phase {phase + 1} ---")
+    print(f"End of Training Phase {phase + 1}\t|\tTotal Reward: {format(phase_total_score,'.2f')}\t|\tAverage Reward: {phase_total_score / (phase + 1)}")
+    print(f"==============\t|\tStarting Testing Phase after Training Phase {phase + 1}\t|\t==============")
     average_score, high_tile, moves_before_break = test_agent(game, agent, num_tests=num_tests)
 
     with open(f"Outputs/{curr_dt}/average_scores.csv", "a") as f:
@@ -292,14 +322,15 @@ for phase in range(num_phases):
                 param_group['lr']
         print(f"Performance threshold reached, adjusted performance threshold to {performance_threshold}")
     else:
-        agent.epsilon = min(agent.epsilon_max, agent.epsilon * (
-                    1 / agent.epsilon_decay))  # Slightly increase epsilon if performance is below threshold
+        performance_threshold *= 0.999
+        agent.epsilon = min(agent.epsilon_max, agent.epsilon * 1.001)  # Slightly increase epsilon if performance is below threshold
+        print(f"Performance threshold reached, adjusted performance threshold to {performance_threshold}")
 
     last_average_score = average_score
     print(
-        f"End of Phase {phase + 1} - Adjusted Epsilon: {agent.epsilon}, Learning Rate: {agent.optimizer.param_groups[0]['lr']}")
+        f"End of Phase {phase + 1}\t|\tAdjusted Epsilon: {agent.epsilon}\t|\tLearning Rate: {agent.optimizer.param_groups[0]['lr']}")
 
-print("--- Final Testing ---")
+print("==============\t|\tFinal Testing\t|\t==============")
 torch.save(agent.model.state_dict(), f"Models/{curr_dt}/final_model.pth")
 test_agent(game, agent, num_tests=20)
 save_videos("final")
