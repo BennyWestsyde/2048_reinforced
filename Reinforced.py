@@ -130,7 +130,7 @@ class DQNAgent:
         self.state_size = state_size
         self.action_size = action_size
         self.batch_size = batch_size
-        self.epsilon_max = 0.99999
+        self.epsilon_max = 1
         self.epsilon = self.epsilon_max
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
@@ -144,6 +144,7 @@ class DQNAgent:
         self.model.to(device)
         self.optimizer = optim.Adam(self.model.parameters())
         self.replay_buffer = ReplayBuffer(10000)
+        self.losses = []
 
     def act(self, state, test=False):
         # Convert the state to a tensor and add a channel dimension
@@ -178,6 +179,7 @@ class DQNAgent:
         #else:
         #    agent.epsilon = min(agent.epsilon_max, agent.epsilon * 1.00001)
         loss = F.mse_loss(current_q, expected_q.detach())
+        self.losses.append(loss.item())
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -234,7 +236,8 @@ def test_agent(game, agent, num_tests=10):
     test_results = []
     for i, (score, high_tile, moves_before_break, game_output) in enumerate(
             zip(total_scores, total_high_tile, total_moves_before_break, game_outputs)):
-        test_results.append([i + 1, score, high_tile, moves_before_break, "\033[30;102mWin\033[0m" if game_output == 1 else "\033[30;101mLose\033[0m" if game_output == 0 else "\033[30;103mBreak\033[0m"])
+        test_results.append([i + 1, score, high_tile, moves_before_break,
+                             "\033[30;102mWin\033[0m" if game_output == 1 else "\033[30;101mLose\033[0m" if game_output == 0 else "\033[30;103mBreak\033[0m"])
 
     # Print test results using tabulate
     print(tabulate(test_results, headers=['Game', 'Score', 'High Tile', 'Moves', 'Game Output']))
@@ -259,11 +262,8 @@ def save_plot(file):
     # Minimum degree is 1 (linear), and maximum is set to 5 for practicality
     num_points = len(temp_df.index)
     degree = 1
-    degree_up = 4
-    while num_points//degree_up > 0:
-        degree = min(max(1, num_points // degree_up), 10)  # Example dynamic degree adjustment
-        degree_up = degree_up**2
-
+    while num_points // 4 ** degree > 0:
+        degree = min(degree + 1, 10)  # Example dynamic degree adjustment
     if num_points > 1:
         z = np.polyfit(temp_df.index.astype(float), temp_df['value'], degree)
         p = np.poly1d(z)
@@ -318,7 +318,7 @@ def save_vid(category, curr_phase):
         "-pix_fmt", "yuv420p",  # For compatibility
         new_video_temp_path
     ]
-    subprocess.run(cmd_convert_images, check=True)
+    subprocess.run(cmd_convert_images, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Check if a previous video exists and concatenate
     if os.path.exists(prev_video_path):
@@ -330,9 +330,9 @@ def save_vid(category, curr_phase):
             "ffmpeg", "-y", "-f", "concat", "-safe", "0",
             "-i", "concat_list.txt",
             "-c", "copy",
-            final_video_path
+            os.path.splitext(final_video_path)[0] + "_temp.mp4"  # Output concatenated video
         ]
-        subprocess.run(cmd_concat, check=True)
+        subprocess.run(cmd_concat, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         # No previous video, just rename temp to final
         os.rename(new_video_temp_path, final_video_path)
@@ -340,17 +340,16 @@ def save_vid(category, curr_phase):
     # Adjust frame rate of final video, if necessary
     cmd_adjust_fps = [
         "ffmpeg", "-y",
-        "-i", final_video_path,
+        "-i", os.path.splitext(final_video_path)[0] + "_temp.mp4",
         "-r", str(desired_fps),
         "-preset", "veryslow",
         "-crf", "24",
         "-pix_fmt", "yuv420p",
-        final_video_path + "_adjusted.mp4"  # Output adjusted video
+        final_video_path  # Output adjusted video
     ]
-    subprocess.run(cmd_adjust_fps, check=True)
 
     # Optionally replace original final video with the adjusted one
-    os.rename(final_video_path + "_adjusted.mp4", final_video_path)
+    os.rename(os.path.splitext(final_video_path)[0] + "_adjusted.mp4", final_video_path)
 
     # Clean up temp files if needed
     os.remove(new_video_temp_path)
@@ -374,9 +373,6 @@ def load_model(model_path_, model_class):
     return tmodel
 
 
-
-
-
 # Initialize game and agent
 game = Game()
 state_size = 16  # 4x4 grid flattened
@@ -390,7 +386,7 @@ video_length = 30  #seconds
 # Main loop for multiple training and testing phases
 last_average_score = None  # Track the last average score for performance comparison
 num_phases = 100000
-num_episodes_per_phase = 25
+num_episodes_per_phase = 50
 num_actions_per_episode = 5
 num_outputs_per_episode = 5
 num_tests = 10
@@ -398,7 +394,7 @@ num_tests = 10
 save_model_interval = 1000
 save_plot_interval = 1
 save_video_interval = num_phases // 100
-performance_threshold = 10
+performance_threshold = 5
 cross_phase_total_score = 0
 
 for phase in range(num_phases):
@@ -434,22 +430,24 @@ for phase in range(num_phases):
         slice_size = (num_episodes_per_phase // num_outputs_per_episode)
         if episode % slice_size == 0 and episode > 0:
             episode_output.append([f"{episode - slice_size}-{episode}",
-                                      format(sum([det[0] for det in episode_details[episode - slice_size:episode]]) / slice_size, '.2f'),
-                                      agent.epsilon,
-                                      agent.optimizer.param_groups[0]['lr']])
+                                   format(sum([det[0] for det in
+                                               episode_details[episode - slice_size:episode]]) / slice_size, '.2f'),
+                                   agent.epsilon,
+                                   agent.optimizer.param_groups[0]['lr']])
 
     print(tabulate(episode_output, headers=['Episode Range', 'Average Score', 'Epsilon', 'Learning Rate']))
 
     # After all episodes in a phase are complete, decide which to learn from
     # For simplicity, let's learn from top N% of episodes
-    top_n_percent = 10
-    episode_details.sort(key=lambda x: x[0], reverse=True)  # Sort episodes by score, descending
+    top_n_percent = 100
+    #episode_details.sort(key=lambda x: x[0], reverse=True)  # Sort episodes by score, descending
     top_episodes = episode_details[:max(1, len(episode_details) * top_n_percent // 100)]
 
     # Now push experiences from top episodes into the main replay buffer and trigger learning
     for _, buffer in top_episodes:
         for experience in buffer:
-            agent.replay_buffer.push(*experience)
+            if experience[2] > 0:
+                agent.push_replay_buffer(*experience)
         agent.learn()  # Learn from the accumulated experiences of top-performing episodes
 
     # Continue with model saving and performance plotting as before
@@ -472,7 +470,9 @@ for phase in range(num_phases):
         save_plot("high_tiles")
         save_plot("moves_before_break")
 
-    print(tabulate([[phase + 1, average_score, high_tile, moves_before_break]], headers=['Phase', 'Average Score', 'High Tile', 'Moves Before Break']))
+    print(tabulate([[phase + 1, average_score, high_tile, moves_before_break,
+                     sum(agent.losses[-1 * len(top_episodes):-1]) / len(top_episodes) if len(agent.losses) > 0 else 0]],
+                   headers=['Phase', 'Average Score', 'High Tile', 'Moves Before Break', 'Loss']))
 
     if average_score > performance_threshold:
         performance_threshold += (average_score - performance_threshold) * 1.25
@@ -486,9 +486,10 @@ for phase in range(num_phases):
         print(f"Performance threshold reached, adjusted performance threshold to {performance_threshold}")
         print("\033[0m")
     else:
-        performance_threshold *= 0.99999
+        performance_threshold *= 0.9999
         agent.epsilon = min(agent.epsilon_max,
-                            agent.epsilon * (1/(agent.epsilon_decay+((1-agent.epsilon_decay)/4))))  # Slightly increase epsilon if performance is below threshold
+                            agent.epsilon * (1 / (agent.epsilon_decay + ((
+                                                                                     1 - agent.epsilon_decay) / 4))))  # Slightly increase epsilon if performance is below threshold
         for param_group in agent.optimizer.param_groups:
             param_group['lr'] = min(agent.learning_rate_max, param_group[
                 'lr'] * 1.000001) if last_average_score is not None and average_score <= last_average_score else \
