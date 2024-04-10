@@ -29,7 +29,17 @@ print(device)  # Output: device(type='cuda') if GPU is available, otherwise 'cpu
 
 torch.set_default_device(device)
 
-curr_dt = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
+if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+    model_path = sys.argv[1]
+    curr_dt = os.path.split(os.path.split(os.path.abspath(model_path))[-2])[-1]
+    print(f"Loading model from {curr_dt}")
+    with open(f"Outputs/{curr_dt}/average_scores.csv", "r") as f:
+        phase_offset = int(f.readlines()[-1].split(",")[0])
+else:
+    phase_offset = 0
+    curr_dt = strftime("%Y-%m-%d_%H-%M-%S", gmtime())
+    model_path = None
+
 if not os.path.exists("Outputs"):
     os.makedirs("Outputs")
 
@@ -74,6 +84,7 @@ class DuelingDQN(nn.Module):
         # Note: input should be (batch_size, channels, height, width). Here, channels = 1 for the game board.
         self.conv1 = nn.Conv2d(1, 32, kernel_size=2, stride=1)  # 32 filters, kernel size 2x2
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
 
         # Calculate the size of the output from the last conv layer to connect it to the first linear layer
         def conv2d_size_out(size, kernel_size=2, stride=1):
@@ -115,11 +126,11 @@ class ReplayBuffer:
 
 
 class DQNAgent:
-    def __init__(self, state_size, action_size, batch_size, model):
+    def __init__(self, state_size, action_size, batch_size, model, model_path=None):
         self.state_size = state_size
         self.action_size = action_size
         self.batch_size = batch_size
-        self.epsilon_max = 0.999
+        self.epsilon_max = 0.99999
         self.epsilon = self.epsilon_max
         self.epsilon_decay = 0.995
         self.epsilon_min = 0.01
@@ -127,7 +138,10 @@ class DQNAgent:
         self.learning_rate_min = 1e-5
         self.learning_rate_max = 1e-3
         self.gamma = 0.99  # Discount rate
-        self.model = model().to(device)
+        self.model = model()
+        if model_path:
+            self.model.load_state_dict(torch.load(model_path))
+        self.model.to(device)
         self.optimizer = optim.Adam(self.model.parameters())
         self.replay_buffer = ReplayBuffer(10000)
 
@@ -244,7 +258,11 @@ def save_plot(file):
     # Determine the degree for the polynomial fit
     # Minimum degree is 1 (linear), and maximum is set to 5 for practicality
     num_points = len(temp_df.index)
-    degree = min(max(1, num_points // 10), 5)  # Example dynamic degree adjustment
+    degree = 1
+    degree_up = 4
+    while num_points//degree_up > 0:
+        degree = min(max(1, num_points // degree_up), 10)  # Example dynamic degree adjustment
+        degree_up = degree_up**2
 
     if num_points > 1:
         z = np.polyfit(temp_df.index.astype(float), temp_df['value'], degree)
@@ -278,29 +296,67 @@ def save_plot(file):
 
 
 def save_vid(category, curr_phase):
-    # get number of png files in the directory
-    num_files = len([f for f in os.listdir(f"Outputs/{curr_dt}/images/{category}") if f.endswith('.png')])
-    cmd = [
-        "ffmpeg",
-        "-y",  # Overwrite output files without asking
-        "-r", str(num_files // video_length),  # Frame rate
-        "-i", f"Outputs/{curr_dt}/images/{category}/%d.png",  # Input files
-        "-vf", "scale=1280:-1",  # Video filter: scale video
-        "-preset", "veryslow",  # Encoding preset
-        "-crf", "24",  # Constant Rate Factor
-        "-f", "mp4",  # Format
-        f"Outputs/{curr_dt}/{category}_{curr_phase}.mp4"  # Output file
+    output_dir = f"Outputs/{curr_dt}/images/{category}"
+    num_files = curr_phase // save_plot_interval
+    desired_fps = num_files // video_length
+
+    # Calculate previous phase based on current phase and interval
+    prev_phase = curr_phase - save_video_interval
+
+    prev_video_path = f"Outputs/{curr_dt}/{category}_{prev_phase}.mp4"
+    new_video_temp_path = f"Outputs/{curr_dt}/images/{category}_temp.mp4"
+    final_video_path = f"Outputs/{curr_dt}/{category}_{curr_phase}.mp4"
+
+    # Convert images to video
+    cmd_convert_images = [
+        "ffmpeg", "-y",
+        "-r", str(max(1, num_files // video_length)),  # Avoid division by zero for frame rate
+        "-i", os.path.join(output_dir, "%d.png"),
+        "-vf", "scale=1280:-1",
+        "-preset", "veryslow",
+        "-crf", "24",
+        "-pix_fmt", "yuv420p",  # For compatibility
+        new_video_temp_path
     ]
+    subprocess.run(cmd_convert_images, check=True)
 
-    # Create a subprocess to execute the FFmpeg command
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Check if a previous video exists and concatenate
+    if os.path.exists(prev_video_path):
+        with open("concat_list.txt", "w") as f:
+            f.write(f"file '{prev_video_path}'\n")
+            f.write(f"file '{new_video_temp_path}'\n")
 
-    # Wait for the subprocess to finish
-    stdout, stderr = process.communicate()
+        cmd_concat = [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", "concat_list.txt",
+            "-c", "copy",
+            final_video_path
+        ]
+        subprocess.run(cmd_concat, check=True)
+    else:
+        # No previous video, just rename temp to final
+        os.rename(new_video_temp_path, final_video_path)
 
-    # Check if there were any errors
-    if process.returncode != 0:
-        print(f"FFmpeg error: {stderr.decode()}")
+    # Adjust frame rate of final video, if necessary
+    cmd_adjust_fps = [
+        "ffmpeg", "-y",
+        "-i", final_video_path,
+        "-r", str(desired_fps),
+        "-preset", "veryslow",
+        "-crf", "24",
+        "-pix_fmt", "yuv420p",
+        final_video_path + "_adjusted.mp4"  # Output adjusted video
+    ]
+    subprocess.run(cmd_adjust_fps, check=True)
+
+    # Optionally replace original final video with the adjusted one
+    os.rename(final_video_path + "_adjusted.mp4", final_video_path)
+
+    # Clean up temp files if needed
+    os.remove(new_video_temp_path)
+    os.remove("concat_list.txt")
+    for file in os.listdir(output_dir):
+        os.remove(os.path.join(output_dir, file))
 
 
 def save_videos(curr_phase):
@@ -311,18 +367,15 @@ def save_videos(curr_phase):
     threading.Thread(target=save_vid, args=("moves_before_break", curr_phase)).start()
 
 
-def load_model(model_path, model_class):
-    model = model_class()
-    model.load_state_dict(torch.load(model_path))
-    model.eval()  # Set the model to evaluation mode
-    return model
+def load_model(model_path_, model_class):
+    tmodel = model_class()  # Instantiate the model
+    tmodel.load_state_dict(torch.load(model_path_, map_location=device))  # Load the state dict
+    tmodel.to(device)  # Ensure model is on the correct device
+    return tmodel
 
 
-if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
-    model_path = sys.argv[1]
-    model = load_model(model_path, DuelingDQN)
-else:
-    model = DuelingDQN
+
+
 
 # Initialize game and agent
 game = Game()
@@ -330,7 +383,7 @@ state_size = 16  # 4x4 grid flattened
 action_size = 4  # left, right, up, down
 batch_size = 64
 
-agent = DQNAgent(state_size, action_size, batch_size, DuelingDQN)
+agent = DQNAgent(state_size, action_size, batch_size, DuelingDQN, model_path)
 repetition_allowance = 10
 video_length = 30  #seconds
 
@@ -339,7 +392,7 @@ last_average_score = None  # Track the last average score for performance compar
 num_phases = 100000
 num_episodes_per_phase = 25
 num_actions_per_episode = 5
-num_outputs_per_episode = 20
+num_outputs_per_episode = 5
 num_tests = 10
 
 save_model_interval = 1000
@@ -349,6 +402,7 @@ performance_threshold = 10
 cross_phase_total_score = 0
 
 for phase in range(num_phases):
+    phase += phase_offset
     phase_total_score = 0
     episode_details = []  # To store total score and buffer for each episode
 
@@ -432,13 +486,12 @@ for phase in range(num_phases):
         print(f"Performance threshold reached, adjusted performance threshold to {performance_threshold}")
         print("\033[0m")
     else:
-        performance_threshold *= 0.999
+        performance_threshold *= 0.99999
         agent.epsilon = min(agent.epsilon_max,
-                            agent.epsilon * (
-                                        1 / (agent.epsilon_decay+(1-agent.epsilon)/2)))  # Slightly increase epsilon if performance is below threshold
+                            agent.epsilon * (1/(agent.epsilon_decay+((1-agent.epsilon_decay)/4))))  # Slightly increase epsilon if performance is below threshold
         for param_group in agent.optimizer.param_groups:
             param_group['lr'] = min(agent.learning_rate_max, param_group[
-                'lr'] * 1.00001) if last_average_score is not None and average_score <= last_average_score else \
+                'lr'] * 1.000001) if last_average_score is not None and average_score <= last_average_score else \
                 param_group['lr']
         # Print color red
         print("\033[30;101m")

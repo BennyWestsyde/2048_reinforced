@@ -27,6 +27,7 @@ class DuelingDQN(nn.Module):
         # Note: input should be (batch_size, channels, height, width). Here, channels = 1 for the game board.
         self.conv1 = nn.Conv2d(1, 32, kernel_size=2, stride=1)  # 32 filters, kernel size 2x2
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
 
         # Calculate the size of the output from the last conv layer to connect it to the first linear layer
         def conv2d_size_out(size, kernel_size=2, stride=1):
@@ -51,7 +52,6 @@ class DuelingDQN(nn.Module):
         advantage_mean = torch.mean(advantage, dim=1, keepdim=True)
         q_values = value + advantage - advantage_mean
         return q_values
-
 
 # Assuming the Game class has a render method to visualize the game state
 # Load your trained model
