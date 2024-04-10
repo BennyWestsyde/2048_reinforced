@@ -8,16 +8,44 @@ import torch.nn.functional as F
 from Game import Game
 import matplotlib.pyplot as plt
 
+
+print(torch.cuda.is_available())  # Returns True if GPU is available
+print(torch.cuda.device_count())  # Number of GPUs on the machine
+print(torch.cuda.current_device())  # Device number of the active GPU (e.g., 0)
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)  # Output: device(type='cuda') if GPU is available, otherwise 'cpu'
+
+torch.set_default_device(device)
+
 # Define the model class as before
 class DuelingDQN(nn.Module):
     def __init__(self):
         super(DuelingDQN, self).__init__()
-        self.fc1 = nn.Linear(16, 128)
-        self.fc_value = nn.Linear(128, 1)
-        self.fc_advantage = nn.Linear(128, 4)
+        # Assuming the input state is a 4x4 board. Adjust according to your actual input dimensions.
+        # Note: input should be (batch_size, channels, height, width). Here, channels = 1 for the game board.
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=2, stride=1)  # 32 filters, kernel size 2x2
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
+
+        # Calculate the size of the output from the last conv layer to connect it to the first linear layer
+        def conv2d_size_out(size, kernel_size=2, stride=1):
+            return (size - (kernel_size - 1) - 1) // stride + 1
+
+        convw = conv2d_size_out(conv2d_size_out(4))  # Assuming a 4x4 input grid
+        convh = convw  # Square output
+        linear_input_size = convw * convh * 64  # Output size * number of output channels from the last conv layer
+
+        self.fc_value = nn.Linear(linear_input_size, 1)
+        self.fc_advantage = nn.Linear(linear_input_size, 4)
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+
+        # Flatten the output for the fully connected layers
+        x = x.view(x.size(0), -1)
+
         value = self.fc_value(x)
         advantage = self.fc_advantage(x)
         advantage_mean = torch.mean(advantage, dim=1, keepdim=True)
@@ -39,7 +67,7 @@ def play_and_render_game(model, game, num_steps=None):
     done = False
     if num_steps is None:
         while not done:
-            state_tensor = torch.FloatTensor(state['board']).unsqueeze(0)
+            state_tensor = torch.FloatTensor(state['board']).unsqueeze(0).unsqueeze(0).to(device)
             with torch.no_grad():
                 q_values = model(state_tensor)
             action = q_values.max(1)[1].item()
@@ -51,7 +79,7 @@ def play_and_render_game(model, game, num_steps=None):
     else:
         for step in range(num_steps):
             # Assuming state is a dictionary with 'board' key holding the game state
-            state_tensor = torch.FloatTensor(state['board']).unsqueeze(0)
+            state_tensor = torch.FloatTensor(state['board']).unsqueeze(0).unsqueeze(0).to(device)
             with torch.no_grad():
                 q_values = model(state_tensor)
             action = q_values.max(1)[1].item()

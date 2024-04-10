@@ -36,13 +36,18 @@ class Game:
 		return self.getState()
 
 	def reward(self, prev_state, action, new_state):
+		reward = 0
 		if self.checkWin():
-			return 10
+			reward += 100
 		if self.game_over():
-			return -10
+			reward += -20
 		if prev_state['board'] == new_state['board']:
-			return -0.1
-		return (new_state['score'] - prev_state['score']) / 2
+			reward += -0.1
+		if new_state['score'] > prev_state['score'] != 0:
+			reward += math.log2(new_state['score']-prev_state['score'])
+		if new_state['total_empty_cells'] < prev_state['total_empty_cells'] and new_state['total_empty_cells'] != 0:
+			reward += prev_state['total_empty_cells'] - new_state['total_empty_cells']
+		return reward
 
 	def randomMove(self, count=1):
 		moves = []
@@ -57,6 +62,7 @@ class Game:
 		action_mapping = {0: "left", 1: "right", 2: "up", 3: "down"}
 		prev_state = self.getState()
 		getattr(self, action_mapping[action])()
+		self.updateKeys()
 		reward = self.reward(prev_state, action, self.getState())
 		return self.getState(), reward, self.game_over()
 
@@ -73,16 +79,17 @@ class Game:
 				flat_board.append(cell.value)
 
 		output = {
-			"board": flat_board,
+			"board": [[cell.value for cell in row] for row in self.board],
 			"score": self.score,
 			"max_value": self.max_value,
-			"total_value": self.total_value
+			"total_value": self.total_value,
+			"total_empty_cells": self.total_empty_cells
 			}
 		return output
 
 	def fromState(self, state):
 		self.reset()
-		self.board = [[Cell(state['board'][i + j * 4]) for i in range(4)] for j in range(4)]
+		self.board = [[Cell(cell) for cell in row] for row in state['board']]
 		self.score = state['score']
 		self.max_value = state['max_value']
 		self.total_value = state['total_value']
