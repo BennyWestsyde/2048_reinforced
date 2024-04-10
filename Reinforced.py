@@ -1,3 +1,4 @@
+import _pickle
 import math
 import os
 import sys
@@ -317,7 +318,7 @@ def load_model(model_path, model_class):
     return model
 
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
     model_path = sys.argv[1]
     model = load_model(model_path, DuelingDQN)
 else:
@@ -338,13 +339,13 @@ last_average_score = None  # Track the last average score for performance compar
 num_phases = 100000
 num_episodes_per_phase = 25
 num_actions_per_episode = 5
-num_outputs_per_episode = 10
+num_outputs_per_episode = 20
 num_tests = 10
 
 save_model_interval = 1000
 save_plot_interval = 1
 save_video_interval = num_phases // 100
-performance_threshold = 20
+performance_threshold = 10
 cross_phase_total_score = 0
 
 for phase in range(num_phases):
@@ -431,10 +432,10 @@ for phase in range(num_phases):
         print(f"Performance threshold reached, adjusted performance threshold to {performance_threshold}")
         print("\033[0m")
     else:
-        performance_threshold *= 0.99
+        performance_threshold *= 0.999
         agent.epsilon = min(agent.epsilon_max,
                             agent.epsilon * (
-                                        1 / agent.epsilon_decay))  # Slightly increase epsilon if performance is below threshold
+                                        1 / (agent.epsilon_decay+(1-agent.epsilon)/2)))  # Slightly increase epsilon if performance is below threshold
         for param_group in agent.optimizer.param_groups:
             param_group['lr'] = min(agent.learning_rate_max, param_group[
                 'lr'] * 1.00001) if last_average_score is not None and average_score <= last_average_score else \
