@@ -42,13 +42,13 @@ class Game:
 		if self.game_over():
 			reward += -10
 		if prev_state['board'] == new_state['board']:
-			reward += -0.25
+			reward += -0.5
 		#if new_state['score'] > prev_state['score'] != 0:
 		#	reward += math.log2(new_state['score']-prev_state['score'])
-		if new_state['total_empty_cells'] < prev_state['total_empty_cells'] and new_state['total_empty_cells'] != 0:
-			reward += prev_state['total_empty_cells'] - new_state['total_empty_cells']
+		#if new_state['total_empty_cells'] < prev_state['total_empty_cells'] and new_state['total_empty_cells'] != 0:
+		#	reward += prev_state['total_empty_cells'] - new_state['total_empty_cells']
 		if new_state['max_value'] > prev_state['max_value']:
-			reward += math.log2(new_state['max_value'])
+			reward += new_state['max_value']
 		return reward
 
 	def randomMove(self, count=1):
