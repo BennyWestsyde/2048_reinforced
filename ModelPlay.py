@@ -9,15 +9,7 @@ from Game import Game
 import matplotlib.pyplot as plt
 
 
-print(torch.cuda.is_available())  # Returns True if GPU is available
-print(torch.cuda.device_count())  # Number of GPUs on the machine
-print(torch.cuda.current_device())  # Device number of the active GPU (e.g., 0)
 
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)  # Output: device(type='cuda') if GPU is available, otherwise 'cpu'
-
-torch.set_default_device(device)
 
 # Define the model class as before
 class DuelingDQN(nn.Module):

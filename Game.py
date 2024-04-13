@@ -40,13 +40,13 @@ class Game:
 		if self.checkWin():
 			reward += 50
 		if self.game_over():
-			reward += -10
+			reward += -5
 		if prev_state['board'] == new_state['board']:
-			reward += -0.5
+			reward += -1
 		#if new_state['score'] > prev_state['score'] != 0:
 		#	reward += math.log2(new_state['score']-prev_state['score'])
-		#if new_state['total_empty_cells'] < prev_state['total_empty_cells'] and new_state['total_empty_cells'] != 0:
-		#	reward += prev_state['total_empty_cells'] - new_state['total_empty_cells']
+		if new_state['total_empty_cells'] < prev_state['total_empty_cells'] and new_state['total_empty_cells'] != 0:
+			reward += prev_state['total_empty_cells'] - new_state['total_empty_cells']
 		if new_state['max_value'] > prev_state['max_value']:
 			reward += new_state['max_value']
 		return reward
@@ -64,6 +64,7 @@ class Game:
 		action_mapping = {0: "left", 1: "right", 2: "up", 3: "down"}
 		prev_state = self.getState()
 		getattr(self, action_mapping[action])()
+		self.last_move = action_mapping[action]
 		self.updateKeys()
 		reward = self.reward(prev_state, action, self.getState())
 		return self.getState(), reward, self.game_over()
