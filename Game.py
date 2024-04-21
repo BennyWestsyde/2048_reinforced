@@ -42,7 +42,7 @@ class Game:
 		if self.game_over():
 			reward += -5
 		if prev_state['board'] == new_state['board']:
-			reward += -1
+			reward += -.5
 		#if new_state['score'] > prev_state['score'] != 0:
 		#	reward += math.log2(new_state['score']-prev_state['score'])
 		if new_state['total_empty_cells'] < prev_state['total_empty_cells'] and new_state['total_empty_cells'] != 0:
@@ -354,6 +354,9 @@ class Game:
 						print("Game Over!")
 					break
 				time.sleep(0.5)
+
+	def getHighTile(self):
+		return self.max_value
 
 
 if __name__ == '__main__':

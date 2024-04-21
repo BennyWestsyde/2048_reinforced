@@ -87,10 +87,10 @@ class DQNAgent:
 		self.state_size = state_size
 		self.action_size = action_size
 		self.batch_size = batch_size
-		self.epsilon = 1.0
+		self.epsilon = 0.5
 		self.epsilon_min = 0.01
 		self.epsilon_decay = 0.995
-		self.epsilon_max = 1.0
+		self.epsilon_max = 0.75
 		self.learning_rate_decay = 0.999
 		self.learning_rate_min = 1e-5
 		self.learning_rate_max = 1e-3
@@ -150,6 +150,16 @@ class DQNAgent:
 		self.optimizer.zero_grad()
 		loss.backward()
 		self.optimizer.step()
+		return loss.item()
 
-	def push_replay_buffer(self, *args):
-		self.replay_buffer.push(*args)
+	def push_replay_buffer(self, state, action, reward, next_state, done):
+		"""
+		Pushes the arguments into the replay buffer
+		:param state:
+		:param action:
+		:param reward:
+		:param next_state:
+		:param done:
+		:return:
+		"""
+		self.replay_buffer.push(state, action, reward, next_state, done)
