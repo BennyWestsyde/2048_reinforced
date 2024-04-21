@@ -8,16 +8,16 @@ batch_size = 64
 
 
 repetition_allowance = 10
-video_length = 30  #seconds
+video_length = 15  #seconds
 
 num_phases = 100000
-num_episodes_per_phase = 25
-num_outputs_per_episode = 5
-num_actions_per_episode = 3
+num_episodes_per_phase = 40
+num_outputs_per_episode = 10
+num_actions_per_episode = 5
 num_tests = 5
 
 save_model_interval = 1000
-save_plot_interval = 1
+save_plot_interval = 10
 save_video_interval = num_phases // 100
 performance_threshold = 5
 cross_phase_total_score = 0

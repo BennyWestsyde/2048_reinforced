@@ -41,6 +41,12 @@ class TrainingOutput:
     epoch_average_score: int
     epsilon: float
     learning_rate: float
+    def __iter__(self):
+        """ Allows the TrainingOutput dataclass to be iterable, which can be used with functions like `tabulate`."""
+        yield self.epoch_range
+        yield self.epoch_average_score
+        yield self.epsilon
+        yield self.learning_rate
 
 @dataclass
 class TestingOutput:
@@ -48,16 +54,22 @@ class TestingOutput:
     score: int
     high_tile: int
     moves_before_break: int
-    game_output: str
-
+    game_output: int
+    def __iter__(self):
+        """ Allows the TrainingOutput dataclass to be iterable, which can be used with functions like `tabulate`."""
+        yield self.game
+        yield self.score
+        yield self.high_tile
+        yield self.moves_before_break
+        yield self.game_output
 @dataclass
 class PhaseDetails:
     phase_total_score: int
     phase_high_tile: int
     phase_moves_before_break: int
     phase_game_break: int
-    phase_training_details: TrainingOutput
-    phase_testing_details: TestingOutput
+    phase_training_details: EpochTrainingDetails
+    phase_testing_details: EpochTestingDetails
 
 @dataclass
 class PhaseBuffer:
@@ -65,5 +77,5 @@ class PhaseBuffer:
     phase_average_high_tile: int
     phase_average_moves_before_break: int
     phase_average_game_break: int
-    phase_training_details: TrainingOutput
-    phase_testing_details: TestingOutput
+    phase_training_output: TrainingOutput
+    phase_testing_output: TestingOutput
